@@ -6,20 +6,20 @@ use rocket::{Request, Response};
 use rocket::http::{Header, Status};
 use rocket::response::Responder;
 
-pub struct HttpError<E> {
+pub(crate) struct HttpError<E> {
     error: E,
     status: Status,
 }
 
 impl<E> HttpError<E> {
-    pub fn new(error: E) -> Self {
+    pub(crate) fn new(error: E) -> Self {
         HttpError {
             error,
             status: Status::InternalServerError,
         }
     }
 
-    pub fn with_status(mut self, status: Status) -> Self {
+    pub(crate) fn with_status(mut self, status: Status) -> Self {
         self.status = status;
         self
     }

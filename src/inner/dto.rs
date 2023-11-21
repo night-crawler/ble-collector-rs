@@ -1,10 +1,9 @@
-use std::collections::{BTreeSet, HashSet};
-use std::time::Duration;
+use std::collections::HashSet;
 
 use anyhow::Context;
 use btleplug::api::{BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service};
 use btleplug::platform::Peripheral;
-use log::{error, info, warn};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -26,9 +25,8 @@ impl AdapterDto {
 pub(crate) struct PeripheralDto {
     pub(crate) id: String,
     pub(crate) address: BDAddr,
-    // services: Vec<ServiceDto>,
     pub(crate) props: Option<PeripheralProperties>,
-    pub(crate) services: Vec<ServiceDto>
+    pub(crate) services: Vec<ServiceDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,7 +145,7 @@ impl PeripheralDto {
             id: peripheral.id().to_string(),
             address: peripheral.address(),
             props,
-            services: services.into_iter().map(ServiceDto::from).collect()
+            services: services.into_iter().map(ServiceDto::from).collect(),
         })
     }
 }
@@ -158,24 +156,14 @@ impl TryFrom<String> for AdapterDto {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let mut pair = value.split_whitespace();
         let id = pair.next().context("No id")?.to_string();
-        let modalias = pair.next().context("No modalias")?
-            .replace(['(', ')'], "")
-            .to_string();
+        let modalias = pair.next().context("No modalias")?.trim();
+        let modalias = modalias.strip_prefix('(').unwrap_or(modalias);
+        let modalias = modalias.strip_suffix(')').unwrap_or(modalias);
+        let modalias = modalias.to_string();
         Ok(Self {
             id,
             modalias,
             peripherals: vec![],
         })
-    }
-}
-
-
-impl TryFrom<Peripheral> for PeripheralDto {
-    type Error = anyhow::Error;
-
-    fn try_from(value: Peripheral) -> Result<Self, Self::Error> {
-        value.id();
-        // value.address()
-        todo!()
     }
 }

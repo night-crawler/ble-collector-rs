@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use btleplug::api::{Central, Manager as _, Peripheral as _};
+use btleplug::api::{Central, Manager as _};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::stream;
 use futures_util::StreamExt;
 use lazy_static::lazy_static;
-use log::{error, info, warn};
+use log::info;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 

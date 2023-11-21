@@ -1,9 +1,12 @@
 services:
   - name: 'Sensor Hub'
-    uuid: 'D4:B7:67:56:DC:3B'
-    default-timeout: 60s
+    device_id: !Equals 'D4:B7:67:56:DC:3B'
+    default_timeout: 60
     characteristics:
       - !Subscribe
+        name: 'Temperature'
         uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
       - !Poll
+        name: 'Humidity'
         uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
+        timeout: 60

@@ -1,22 +1,12 @@
-use btleplug::api::{bleuuid::uuid_from_u16, Central, CentralEvent, Manager as _, Peripheral as _, ScanFilter, WriteType};
-use btleplug::platform::{Adapter, Manager, Peripheral};
-use rand::{Rng, thread_rng};
-use std::error::Error;
 use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
-use clap::Parser;
-use futures_util::{select, StreamExt};
-use tokio::task::{JoinError, JoinHandle};
-use tokio::time;
-use uuid::Uuid;
-use crate::inner::error::CollectorError;
-use tokio::task::JoinSet;
-use log::{error, info};
-use rocket::{get, routes};
-use crate::inner::args::Args;
-use crate::inner::configuration::CollectorConfiguration;
 
+use btleplug::api::{Central, CentralEvent, ScanFilter};
+use btleplug::platform::Adapter;
+use futures_util::StreamExt;
+use log::info;
+use tokio::task::JoinSet;
+
+use crate::inner::error::CollectorError;
 
 pub(crate) struct AdapterServiceManager {
     pub(crate) adapter: Arc<Adapter>,
@@ -56,7 +46,7 @@ impl AdapterServiceManager {
 
 
 async fn discover_task(adapter: Arc<Adapter>, sender: kanal::AsyncSender<CentralEvent>) -> Result<(), CollectorError> {
-    let mut stream =  adapter.events().await?;
+    let mut stream = adapter.events().await?;
     while let Some(event) = stream.next().await {
         sender.send(event).await?;
     }
@@ -64,8 +54,9 @@ async fn discover_task(adapter: Arc<Adapter>, sender: kanal::AsyncSender<Central
 }
 
 async fn process_events(receiver: kanal::AsyncReceiver<CentralEvent>) -> Result<(), CollectorError> {
+    // CONFIGURATION_MANAGER.
     while let Some(event) = receiver.stream().next().await {
-        // info!("Event: {event:?}");
+        info!("Event: {event:?}");
     }
 
     Err(CollectorError::EndOfStream)

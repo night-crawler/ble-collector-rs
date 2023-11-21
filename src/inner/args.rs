@@ -1,7 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
-use crate::inner::configuration::{CollectorConfiguration, ConfigurationManager};
+
+use crate::inner::configuration::CollectorConfiguration;
 use crate::inner::error::CollectorError;
 
 #[derive(Parser, Debug)]
