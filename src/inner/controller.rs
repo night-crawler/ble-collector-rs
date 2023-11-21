@@ -8,7 +8,7 @@ use crate::inner::http_error::JsonResult;
 
 #[get("/adapters")]
 pub(crate) async fn adapters() -> JsonResult<Vec<AdapterDto>, CollectorError> {
-    Ok(ADAPTER_MANAGER.describe_adapter().await?.into())
+    Ok(ADAPTER_MANAGER.describe_adapters().await?.into())
 }
 
 #[get("/configurations")]

@@ -1,12 +1,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 use lazy_static::lazy_static;
+use regex::Regex;
 use serde_with::DurationSeconds;
 
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use crate::inner::dto::PeripheralKey;
 
 
 lazy_static! {
@@ -32,14 +34,52 @@ pub(crate) enum CharacteristicConfig {
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum Filter {
     Contains(String),
     StartsWith(String),
     EndsWith(String),
     Equals(String),
     NotEquals(String),
-    Regex(String),
+    #[serde(with = "serde_regex")]
+    Regex(Regex),
+}
+
+impl PartialEq<Self> for Filter {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Filter::Contains(left), Filter::Contains(right)) => left == right,
+            (Filter::StartsWith(left), Filter::StartsWith(right)) => left == right,
+            (Filter::EndsWith(left), Filter::EndsWith(right)) => left == right,
+            (Filter::Equals(left), Filter::Equals(right)) => left == right,
+            (Filter::NotEquals(left), Filter::NotEquals(right)) => left == right,
+            (Filter::Regex(left), Filter::Regex(right)) => left.as_str() == right.as_str(),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Filter {
+
+}
+
+pub(crate) trait Evaluate<S, R> {
+    fn evaluate(&self, source: S) -> R;
+}
+
+impl Evaluate<&str, bool> for Filter {
+    fn evaluate(&self, source: &str) -> bool {
+        match self {
+            Filter::Contains(value) => source.contains(value),
+            Filter::StartsWith(value) => source.starts_with(value),
+            Filter::EndsWith(value) => source.ends_with(value),
+            Filter::Equals(value) => source == value,
+            Filter::NotEquals(value) => source != value,
+            Filter::Regex(value) => {
+                value.is_match(source)
+            }
+        }
+    }
 }
 
 
@@ -62,6 +102,17 @@ pub(crate) struct CollectorConfiguration {
 }
 
 
+impl Evaluate<&PeripheralKey, bool> for BleServiceConfig {
+    fn evaluate(&self, source: &PeripheralKey) -> bool {
+        let adapter = self.adapter.as_ref().map(|filter| filter.evaluate(&source.adapter_id));
+        let device_id = self.device_id.as_ref().map(|filter| filter.evaluate(&source.peripheral_id));
+        // let device_name = self.device_name.as_ref().map(|filter| filter.evaluate(&source.device_name));
+
+        // adapter.unwrap_or(true) && device_id.unwrap_or(true) && device_name.unwrap_or(true)
+        false
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct ConfigurationManager {
     services: Arc<Mutex<Vec<BleServiceConfig>>>,
@@ -76,6 +127,9 @@ impl ConfigurationManager {
     }
     pub(crate) async fn list_services(&self) -> Vec<BleServiceConfig> {
         self.services.lock().await.clone()
+    }
+    pub(crate) async fn has_rules(&self, peripheral_key: &PeripheralKey) -> bool {
+        false
     }
 }
 

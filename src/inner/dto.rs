@@ -1,8 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use btleplug::api::{BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service};
-use btleplug::platform::Peripheral;
+use btleplug::platform::{Peripheral, PeripheralId};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -164,6 +164,31 @@ impl TryFrom<String> for AdapterDto {
             id,
             modalias,
             peripherals: vec![],
+        })
+    }
+}
+
+
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub(crate) struct PeripheralKey {
+    pub(crate) adapter_id: String,
+    pub(crate) peripheral_id: String,
+}
+impl TryFrom<PeripheralId> for PeripheralKey {
+    type Error = anyhow::Error;
+
+    fn try_from(value: PeripheralId) -> Result<Self, Self::Error> {
+        let serialized = serde_json::to_value(value)?;
+        let deserialized: HashMap<String, String> = serde_json::from_value(serialized)?;
+        let path = deserialized.into_values().next().context("No values")?;
+        let path = path.strip_prefix("/org/bluez/").context("No /org/bluez prefix")?;
+        let (adapter, peripheral) = path.rsplit_once('/').context("No / delimiter")?;
+        let peripheral = peripheral.strip_prefix("dev_").context("No dev_ prefix")?;
+        let peripheral = peripheral.replace('_', ":");
+        Ok(Self {
+            adapter_id: adapter.to_string(),
+            peripheral_id: peripheral.to_string(),
         })
     }
 }

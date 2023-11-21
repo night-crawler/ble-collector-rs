@@ -9,8 +9,8 @@ use log::info;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
-use crate::inner::adapter_service_manager::AdapterServiceManager;
-use crate::inner::dto::{AdapterDto, PeripheralDto};
+use crate::inner::peripheral_manager::PeripheralManager;
+use crate::inner::dto::{AdapterDto, PeripheralDto, PeripheralKey};
 use crate::inner::error::{CollectorError, CollectorResult};
 
 lazy_static! {
@@ -22,7 +22,7 @@ lazy_static! {
 
 #[derive(Default)]
 pub(crate) struct AdapterManager {
-    adapters: Mutex<Vec<Arc<AdapterServiceManager>>>,
+    device_managers: Mutex<Vec<Arc<PeripheralManager>>>,
 }
 
 
@@ -38,12 +38,12 @@ impl AdapterManager {
     }
 
     async fn add_adapter(&self, adapter: Adapter) {
-        self.adapters.lock().await.push(Arc::new(AdapterServiceManager::new(adapter)))
+        self.device_managers.lock().await.push(Arc::new(PeripheralManager::new(adapter)))
     }
 
     pub(crate) async fn start_discovery(&self) -> btleplug::Result<()> {
         let mut join_set = JoinSet::new();
-        for adapter in self.adapters.lock().await.iter() {
+        for adapter in self.device_managers.lock().await.iter() {
             let adapter = Arc::clone(adapter);
             join_set.spawn(async move {
                 adapter.start_discovery().await
@@ -57,10 +57,10 @@ impl AdapterManager {
         Ok(())
     }
 
-    pub(crate) async fn describe_adapter(&self) -> CollectorResult<Vec<AdapterDto>> {
-        let adapters = self.adapters.lock().await;
+    pub(crate) async fn describe_adapters(&self) -> CollectorResult<Vec<AdapterDto>> {
+        let device_managers = self.device_managers.lock().await;
 
-        let peripherals_per_adapter = stream::iter(adapters.iter())
+        let peripherals_per_adapter = stream::iter(device_managers.iter())
             .map(Arc::clone)
             .map(|adapter_service_manager| {
                 async move {
@@ -117,4 +117,11 @@ impl AdapterManager {
 
         Ok(result)
     }
+
+    pub(crate) async fn is_connected(&self, peripheral_key: &PeripheralKey) -> bool {
+        let device_managers = self.device_managers.lock().await;
+        device_managers.iter().any(|dm| dm.is_connected(peripheral_key))
+    }
 }
+
+
