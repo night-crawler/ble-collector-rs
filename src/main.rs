@@ -1,6 +1,7 @@
 use std::error::Error;
 
 use clap::Parser;
+use fern::colors::{Color, ColoredLevelConfig};
 use log::info;
 use rocket::routes;
 use tokio::task::JoinSet;
@@ -14,14 +15,29 @@ mod inner;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Info)
-        // .format_target(false)
-        // .format_timestamp(None)
-        .init();
+    let colors = ColoredLevelConfig::new()
+        .debug(Color::Magenta)
+        .error(Color::Red)
+        .info(Color::Green)
+        .warn(Color::Yellow);
+    fern::Dispatch::new()
+        .format(move |out, message, record| {
+            out.finish(format_args!(
+                "[{} {} {}] {}",
+                humantime::format_rfc3339_millis(std::time::SystemTime::now()),
+                colors.color(record.level()),
+                record.target(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Info)
+        .level_for("rocket", log::LevelFilter::Info)
+        .level_for("sensor_hub_ble_collector_rs", log::LevelFilter::Debug)
+        .chain(std::io::stdout())
+        .apply()?;
 
     let conf = CollectorConfiguration::try_from(Args::parse())?;
-    CONFIGURATION_MANAGER.add_services(conf.services).await;
+    CONFIGURATION_MANAGER.add_services(conf.services).await?;
 
     ADAPTER_MANAGER.init().await?;
 

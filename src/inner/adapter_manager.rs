@@ -5,26 +5,22 @@ use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::stream;
 use futures_util::StreamExt;
 use lazy_static::lazy_static;
-use log::info;
+use log::{error, info};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
-use crate::inner::peripheral_manager::PeripheralManager;
 use crate::inner::dto::{AdapterDto, PeripheralDto, PeripheralKey};
 use crate::inner::error::{CollectorError, CollectorResult};
+use crate::inner::peripheral_manager::PeripheralManager;
 
 lazy_static! {
-    pub(crate) static ref ADAPTER_MANAGER: AdapterManager = {
-        Default::default()
-    };
+    pub(crate) static ref ADAPTER_MANAGER: AdapterManager = Default::default();
 }
-
 
 #[derive(Default)]
 pub(crate) struct AdapterManager {
     device_managers: Mutex<Vec<Arc<PeripheralManager>>>,
 }
-
 
 impl AdapterManager {
     pub(crate) async fn init(&self) -> btleplug::Result<()> {
@@ -38,16 +34,16 @@ impl AdapterManager {
     }
 
     async fn add_adapter(&self, adapter: Adapter) {
-        self.device_managers.lock().await.push(Arc::new(PeripheralManager::new(adapter)))
+        self.device_managers
+            .lock()
+            .await
+            .push(Arc::new(PeripheralManager::new(adapter)))
     }
 
     pub(crate) async fn start_discovery(&self) -> btleplug::Result<()> {
         let mut join_set = JoinSet::new();
-        for adapter in self.device_managers.lock().await.iter() {
-            let adapter = Arc::clone(adapter);
-            join_set.spawn(async move {
-                adapter.start_discovery().await
-            });
+        for peripheral_manager in self.device_managers.lock().await.iter().cloned() {
+            join_set.spawn(async move { peripheral_manager.start_discovery().await });
         }
 
         if let Some(result) = join_set.join_next().await {
@@ -57,22 +53,48 @@ impl AdapterManager {
         Ok(())
     }
 
+    pub(crate) async fn get_peripheral_manager(
+        &self,
+        adapter: &Adapter,
+    ) -> Option<Arc<PeripheralManager>> {
+        let adapter_info = match adapter.adapter_info().await {
+            Ok(info) => info,
+            Err(err) => {
+                error!("Failed to get adapter info: {:?}", err);
+                return None;
+            }
+        };
+        let managers = self.device_managers.lock().await;
+        for manager in managers.iter() {
+            let manager_info = match manager.adapter.adapter_info().await {
+                Ok(info) => info,
+                Err(err) => {
+                    error!("Failed to get adapter info: {:?}", err);
+                    return None;
+                }
+            };
+            if manager_info == adapter_info {
+                return Some(Arc::clone(manager));
+            }
+        }
+        error!("Failed to find adapter manager for adapter: {:?}", adapter);
+        None
+    }
+
     pub(crate) async fn describe_adapters(&self) -> CollectorResult<Vec<AdapterDto>> {
         let device_managers = self.device_managers.lock().await;
 
         let peripherals_per_adapter = stream::iter(device_managers.iter())
             .map(Arc::clone)
-            .map(|adapter_service_manager| {
-                async move {
-                    let adapter_info = adapter_service_manager.adapter.adapter_info().await?;
-                    let adapter_dto = AdapterDto::try_from(adapter_info)?;
-                    let peripherals = adapter_service_manager.adapter.peripherals().await?;
+            .map(|adapter_service_manager| async move {
+                let adapter_info = adapter_service_manager.adapter.adapter_info().await?;
+                let adapter_dto = AdapterDto::try_from(adapter_info)?;
+                let peripherals = adapter_service_manager.adapter.peripherals().await?;
 
-                    Ok::<(Arc<Mutex<AdapterDto>>, Vec<Peripheral>), CollectorError>((
-                        Arc::new(Mutex::new(adapter_dto)),
-                        peripherals
-                    ))
-                }
+                Ok::<(Arc<Mutex<AdapterDto>>, Vec<Peripheral>), CollectorError>((
+                    Arc::new(Mutex::new(adapter_dto)),
+                    peripherals,
+                ))
             })
             .buffer_unordered(4)
             .collect::<Vec<_>>()
@@ -80,22 +102,23 @@ impl AdapterManager {
             .into_iter()
             .collect::<CollectorResult<Vec<_>>>()?;
 
-        let flatten_iter = peripherals_per_adapter
-            .into_iter()
-            .flat_map(|(adapter_dto, peripherals)| {
-                peripherals.into_iter().map(move |peripheral| (adapter_dto.clone(), peripheral))
-            });
+        let flatten_iter =
+            peripherals_per_adapter
+                .into_iter()
+                .flat_map(|(adapter_dto, peripherals)| {
+                    peripherals
+                        .into_iter()
+                        .map(move |peripheral| (adapter_dto.clone(), peripheral))
+                });
 
         let intermediate_result: Vec<Arc<Mutex<AdapterDto>>> = stream::iter(flatten_iter)
-            .map(|(adapter_dto, peripheral)| {
-                async move {
-                    {
-                        let dto = PeripheralDto::from_platform(peripheral).await?;
-                        let mut adapter_dto = adapter_dto.lock().await;
-                        adapter_dto.add_peripheral(dto);
-                    }
-                    Ok::<Arc<Mutex<AdapterDto>>, CollectorError>(adapter_dto)
+            .map(|(adapter_dto, peripheral)| async move {
+                {
+                    let dto = PeripheralDto::from_platform(peripheral).await?;
+                    let mut adapter_dto = adapter_dto.lock().await;
+                    adapter_dto.add_peripheral(dto);
                 }
+                Ok::<Arc<Mutex<AdapterDto>>, CollectorError>(adapter_dto)
             })
             .buffer_unordered(32)
             .collect::<Vec<_>>()
@@ -111,7 +134,8 @@ impl AdapterManager {
                 continue;
             }
             let mut dto = dto.clone();
-            dto.peripherals.sort_unstable_by_key(|peripheral| peripheral.id.clone());
+            dto.peripherals
+                .sort_unstable_by_key(|peripheral| peripheral.id.clone());
             result.push(dto);
         }
 
@@ -120,8 +144,8 @@ impl AdapterManager {
 
     pub(crate) async fn is_connected(&self, peripheral_key: &PeripheralKey) -> bool {
         let device_managers = self.device_managers.lock().await;
-        device_managers.iter().any(|dm| dm.is_connected(peripheral_key))
+        device_managers
+            .iter()
+            .any(|dm| dm.is_connected(peripheral_key))
     }
 }
-
-

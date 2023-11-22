@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use rocket::get;
 
 use crate::inner::adapter_manager::ADAPTER_MANAGER;
@@ -12,6 +13,6 @@ pub(crate) async fn adapters() -> JsonResult<Vec<AdapterDto>, CollectorError> {
 }
 
 #[get("/configurations")]
-pub(crate) async fn configurations() -> JsonResult<Vec<BleServiceConfig>, CollectorError> {
+pub(crate) async fn configurations() -> JsonResult<Vec<Arc<BleServiceConfig>>, CollectorError> {
     Ok(CONFIGURATION_MANAGER.list_services().await.into())
 }

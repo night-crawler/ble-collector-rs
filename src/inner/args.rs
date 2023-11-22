@@ -7,10 +7,10 @@ use crate::inner::error::CollectorError;
 
 #[derive(Parser, Debug)]
 #[command(
-author,
-version,
-about,
-long_about = r###"BLE collectoor
+    author,
+    version,
+    about,
+    long_about = r###"BLE collectoor
 "###
 )]
 pub(crate) struct Args {

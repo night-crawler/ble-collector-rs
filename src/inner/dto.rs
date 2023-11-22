@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
-use btleplug::api::{BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service};
+use btleplug::api::{
+    BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service,
+};
 use btleplug::platform::{Peripheral, PeripheralId};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -13,7 +15,6 @@ pub(crate) struct AdapterDto {
     pub(crate) modalias: String,
     pub(crate) peripherals: Vec<PeripheralDto>,
 }
-
 
 impl AdapterDto {
     pub(crate) fn add_peripheral(&mut self, peripheral_dto: PeripheralDto) {
@@ -41,7 +42,11 @@ impl From<Service> for ServiceDto {
         Self {
             uuid: value.uuid,
             primary: value.primary,
-            characteristics: value.characteristics.into_iter().map(CharacteristicDto::from).collect(),
+            characteristics: value
+                .characteristics
+                .into_iter()
+                .map(CharacteristicDto::from)
+                .collect(),
         }
     }
 }
@@ -70,7 +75,7 @@ impl From<&str> for CharPropDto {
             "INDICATE" => Self::Indicate,
             "AUTHENTICATED_SIGNED_WRITES" => Self::AuthenticatedSignedWrites,
             "EXTENDED_PROPERTIES" => Self::ExtendedProperties,
-            _ => Self::Unknown
+            _ => Self::Unknown,
         }
     }
 }
@@ -88,8 +93,17 @@ impl From<Characteristic> for CharacteristicDto {
         Self {
             uuid: value.uuid,
             service_uuid: value.service_uuid,
-            properties: value.properties.iter_names().map(|(name, _)| name).map(CharPropDto::from).collect(),
-            descriptors: value.descriptors.into_iter().map(DescriptorDto::from).collect(),
+            properties: value
+                .properties
+                .iter_names()
+                .map(|(name, _)| name)
+                .map(CharPropDto::from)
+                .collect(),
+            descriptors: value
+                .descriptors
+                .into_iter()
+                .map(DescriptorDto::from)
+                .collect(),
         }
     }
 }
@@ -112,9 +126,7 @@ impl From<Descriptor> for DescriptorDto {
 }
 
 impl PeripheralDto {
-    pub(crate) async fn from_platform(
-        peripheral: Peripheral
-    ) -> btleplug::Result<Self> {
+    pub(crate) async fn from_platform(peripheral: Peripheral) -> btleplug::Result<Self> {
         // info!("Connecting to peripheral: {:?}", peripheral.id());
         // if let Err(err) = tokio::time::timeout(Duration::from_secs(5), peripheral.connect()).await {
         //     warn!("Timeout connecting to peripheral {:?}: {:?}", peripheral.id(), err);
@@ -122,7 +134,11 @@ impl PeripheralDto {
         //     info!("Connected to peripheral: {:?}", peripheral.id());
         // }
         if let Err(err) = peripheral.discover_services().await {
-            error!("Error discovering services for peripheral {:?}: {:?}", peripheral.id(), err);
+            error!(
+                "Error discovering services for peripheral {:?}: {:?}",
+                peripheral.id(),
+                err
+            );
         } else {
             info!("Discovered services for peripheral: {:?}", peripheral.id());
         }
@@ -135,7 +151,11 @@ impl PeripheralDto {
         let props = match peripheral.properties().await {
             Ok(props) => props,
             Err(err) => {
-                error!("Error getting properties for peripheral {:?}: {:?}", peripheral.id(), err);
+                error!(
+                    "Error getting properties for peripheral {:?}: {:?}",
+                    peripheral.id(),
+                    err
+                );
                 None
             }
         };
@@ -168,12 +188,11 @@ impl TryFrom<String> for AdapterDto {
     }
 }
 
-
-
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct PeripheralKey {
     pub(crate) adapter_id: String,
-    pub(crate) peripheral_id: String,
+    pub(crate) peripheral_address: BDAddr,
+    pub(crate) name: Option<String>,
 }
 impl TryFrom<PeripheralId> for PeripheralKey {
     type Error = anyhow::Error;
@@ -182,13 +201,19 @@ impl TryFrom<PeripheralId> for PeripheralKey {
         let serialized = serde_json::to_value(value)?;
         let deserialized: HashMap<String, String> = serde_json::from_value(serialized)?;
         let path = deserialized.into_values().next().context("No values")?;
-        let path = path.strip_prefix("/org/bluez/").context("No /org/bluez prefix")?;
-        let (adapter, peripheral) = path.rsplit_once('/').context("No / delimiter")?;
-        let peripheral = peripheral.strip_prefix("dev_").context("No dev_ prefix")?;
-        let peripheral = peripheral.replace('_', ":");
+        let path = path
+            .strip_prefix("/org/bluez/")
+            .context("No /org/bluez prefix")?;
+        let (adapter, address) = path.rsplit_once('/').context("No / delimiter")?;
+        let address = address.strip_prefix("dev_").context("No dev_ prefix")?;
+        let address = address.replace('_', ":");
+
+        let address = BDAddr::from_str_delim(&address)?;
+
         Ok(Self {
             adapter_id: adapter.to_string(),
-            peripheral_id: peripheral.to_string(),
+            peripheral_address: address,
+            name: None,
         })
     }
 }

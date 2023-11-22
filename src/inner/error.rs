@@ -20,6 +20,9 @@ pub(crate) enum CollectorError {
 
     #[error("Arc unwrap error")]
     ArcUnwrapError,
+    
+    #[error("Duplicate configuration: {0}")]
+    DuplicateConfiguration(String),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

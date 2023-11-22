@@ -2,9 +2,9 @@ use std::fmt::Display;
 use std::io::Cursor;
 
 use log::error;
-use rocket::{Request, Response};
 use rocket::http::{Header, Status};
 use rocket::response::Responder;
+use rocket::{Request, Response};
 
 pub(crate) struct HttpError<E> {
     error: E,
@@ -25,14 +25,19 @@ impl<E> HttpError<E> {
     }
 }
 
-impl<E> From<E> for HttpError<E> where E: Display + std::fmt::Debug {
+impl<E> From<E> for HttpError<E>
+where
+    E: Display + std::fmt::Debug,
+{
     fn from(error: E) -> Self {
         HttpError::new(error)
     }
 }
 
-
-impl<'r, 'o: 'r, E> Responder<'r, 'o> for HttpError<E> where E: Display + std::fmt::Debug {
+impl<'r, 'o: 'r, E> Responder<'r, 'o> for HttpError<E>
+where
+    E: Display + std::fmt::Debug,
+{
     fn respond_to(self, _: &'r Request) -> rocket::response::Result<'o> {
         let status_code = self.status.to_string();
         let response_body = format!("{}: {}", status_code, self.error);
