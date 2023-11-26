@@ -9,7 +9,7 @@ use log::{error, info};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
-use crate::inner::dto::{AdapterDto, PeripheralDto, PeripheralKey};
+use crate::inner::dto::{AdapterDto, PeripheralDto};
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::peripheral_manager::PeripheralManager;
 
@@ -140,12 +140,5 @@ impl AdapterManager {
         }
 
         Ok(result)
-    }
-
-    pub(crate) async fn is_connected(&self, peripheral_key: &PeripheralKey) -> bool {
-        let device_managers = self.device_managers.lock().await;
-        device_managers
-            .iter()
-            .any(|dm| dm.is_connected(peripheral_key))
     }
 }

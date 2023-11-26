@@ -1,3 +1,8 @@
+use uuid::Uuid;
+
+use crate::inner::conf::flat::ServiceCharacteristicKey;
+use crate::inner::conf::parse::CharacteristicConfigDto;
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CollectorError {
     #[error("Bluetooth error: {0:?}")]
@@ -18,11 +23,17 @@ pub(crate) enum CollectorError {
     #[error("Error: {0:?}")]
     AnyError(#[from] anyhow::Error),
 
-    #[error("Arc unwrap error")]
-    ArcUnwrapError,
-    
     #[error("Duplicate configuration: {0}")]
     DuplicateConfiguration(String),
+
+    #[error("Duplicate service configuration {service_uuid}")]
+    DuplicateServiceConfiguration { service_uuid: Uuid },
+
+    #[error("Duplicate service configuration {0}")]
+    DuplicateCharacteristicConfiguration(ServiceCharacteristicKey),
+
+    #[error("Unexpected characteristic configuration type {0:?}")]
+    UnexpectedCharacteristicConfiguration(CharacteristicConfigDto),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

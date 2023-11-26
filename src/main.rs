@@ -8,7 +8,8 @@ use tokio::task::JoinSet;
 
 use crate::inner::adapter_manager::ADAPTER_MANAGER;
 use crate::inner::args::Args;
-use crate::inner::configuration::{CollectorConfiguration, CONFIGURATION_MANAGER};
+use crate::inner::conf::manager::CONFIGURATION_MANAGER;
+use crate::inner::conf::parse::CollectorConfigurationDto;
 use crate::inner::controller::{adapters, configurations};
 
 mod inner;
@@ -36,8 +37,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .chain(std::io::stdout())
         .apply()?;
 
-    let conf = CollectorConfiguration::try_from(Args::parse())?;
-    CONFIGURATION_MANAGER.add_services(conf.services).await?;
+    let conf = CollectorConfigurationDto::try_from(Args::parse())?;
+    CONFIGURATION_MANAGER
+        .add_peripherals(conf.peripherals)
+        .await?;
 
     ADAPTER_MANAGER.init().await?;
 

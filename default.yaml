@@ -1,12 +1,16 @@
-services:
+peripherals:
   - name: 'Sensor Hub'
     device_id: !Equals 'D4:B7:67:56:DC:3B'
-    default_timeout: 60
-    characteristics:
-      - !Subscribe
-        name: 'Temperature'
-        uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
-      - !Poll
-        name: 'Humidity'
-        uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
-        timeout: 60
+    services:
+      - uuid: '5c853275-723b-4754-a329-969d4bc8121e'
+        default_timeout_sec: 60
+        characteristics:
+          - !Subscribe
+            name: 'Temperature'
+            uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
+            history_size: 10
+          - !Poll
+            name: 'Pressure'
+            uuid: '00002a6d-0000-1000-8000-00805f9b34fb'
+            timeout: 60
+            history_size: 10

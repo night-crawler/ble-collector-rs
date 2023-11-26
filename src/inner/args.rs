@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use crate::inner::configuration::CollectorConfiguration;
+use crate::inner::conf::parse::CollectorConfigurationDto;
 use crate::inner::error::CollectorError;
 
 #[derive(Parser, Debug)]
@@ -19,12 +19,12 @@ pub(crate) struct Args {
     config: PathBuf,
 }
 
-impl TryFrom<Args> for CollectorConfiguration {
+impl TryFrom<Args> for CollectorConfigurationDto {
     type Error = CollectorError;
 
     fn try_from(value: Args) -> Result<Self, Self::Error> {
         let config = std::fs::read_to_string(value.config)?;
-        let config: CollectorConfiguration = serde_yaml::from_str(&config)?;
+        let config: CollectorConfigurationDto = serde_yaml::from_str(&config)?;
         Ok(config)
     }
 }

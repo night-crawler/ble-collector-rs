@@ -194,6 +194,7 @@ pub(crate) struct PeripheralKey {
     pub(crate) peripheral_address: BDAddr,
     pub(crate) name: Option<String>,
 }
+
 impl TryFrom<PeripheralId> for PeripheralKey {
     type Error = anyhow::Error;
 
