@@ -1,7 +1,9 @@
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::inner::conf::flat::ServiceCharacteristicKey;
 use crate::inner::conf::parse::CharacteristicConfigDto;
+use crate::inner::conv::converter::ConversionError;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CollectorError {
@@ -33,7 +35,10 @@ pub(crate) enum CollectorError {
     DuplicateCharacteristicConfiguration(ServiceCharacteristicKey),
 
     #[error("Unexpected characteristic configuration type {0:?}")]
-    UnexpectedCharacteristicConfiguration(CharacteristicConfigDto),
+    UnexpectedCharacteristicConfiguration(Arc<CharacteristicConfigDto>),
+
+    #[error("Conversion error: {0:?}")]
+    ConversionError(#[from] ConversionError),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

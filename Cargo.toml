@@ -28,3 +28,9 @@ serde_regex = "1.1"
 retainer = "0.3"
 fern = { version = "0.6", features = ["colored"] }
 humantime = "2.1.0"
+bounded-integer = { version = "0.5", features = ["serde1", "std", "types"] }
+num-bigint = "0.4.4"
+num-traits = "0.2.17"
+
+[dev-dependencies]
+float-cmp = "0.9.0"

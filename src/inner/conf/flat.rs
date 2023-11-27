@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
 use btleplug::api::Characteristic;
 use serde::{Deserialize, Serialize};
@@ -38,7 +39,7 @@ pub(crate) struct FlatPeripheralConfig {
     pub(crate) device_id: Option<Filter>,
     pub(crate) device_name: Option<Filter>,
 
-    pub(crate) service_map: HashMap<ServiceCharacteristicKey, CharacteristicConfigDto>,
+    pub(crate) service_map: HashMap<ServiceCharacteristicKey, Arc<CharacteristicConfigDto>>,
 }
 
 impl From<(Uuid, &CharacteristicConfigDto)> for ServiceCharacteristicKey {
@@ -65,9 +66,10 @@ impl FlatPeripheralConfig {
             }
         }
 
-        for char_conf_dto in service.characteristics {
+        for mut char_conf_dto in service.characteristics {
+            char_conf_dto.update_delay(service.default_delay_sec);
             let key = ServiceCharacteristicKey::from((service_uuid, &char_conf_dto));
-            self.service_map.insert(key, char_conf_dto);
+            self.service_map.insert(key, Arc::new(char_conf_dto));
         }
 
         Ok(())

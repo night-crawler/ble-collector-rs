@@ -7,46 +7,8 @@ use serde_with::DurationSeconds;
 use uuid::Uuid;
 
 use crate::inner::conf::flat::FlatPeripheralConfig;
+use crate::inner::conv::converter::Converter;
 use crate::inner::dto::PeripheralKey;
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default)]
-pub(crate) enum Converter {
-    #[default]
-    Raw,
-    I32Raw,
-    I32 {
-        m: i8,
-        d: i32,
-        b: i32,
-    },
-}
-
-fn compute_r(c: i64, m: i8, d: i32, b: i32) -> f64 {
-    if !(-10..=10).contains(&m) {
-        panic!("Multiplier should be between -10 and +10");
-    }
-
-    (c as f64) * (m as f64) * 10f64.powi(d) * 2f64.powi(b)
-}
-
-impl Converter {
-    pub(crate) fn convert(&self, value: Vec<u8>) -> Option<f64> {
-        match self {
-            Converter::Raw => {
-                let value = i32::from_le_bytes([value[0], value[1], value[2], value[3]]);
-                Some(value as f64)
-            }
-            Converter::I32Raw => {
-                Some(i32::from_le_bytes([value[0], value[1], value[2], value[3]]) as f64)
-            }
-            &Converter::I32 { m, d, b } => {
-                let value = i32::from_le_bytes([value[0], value[1], value[2], value[3]]);
-                let value = compute_r(value as i64, m, d, b);
-                Some(value)
-            }
-        }
-    }
-}
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -74,6 +36,15 @@ impl CharacteristicConfigDto {
         match self {
             CharacteristicConfigDto::Subscribe { uuid, .. } => uuid,
             CharacteristicConfigDto::Poll { uuid, .. } => uuid,
+        }
+    }
+
+    pub(crate) fn update_delay(&mut self, delay: Duration) {
+        match self {
+            Self::Poll { delay_sec, .. } => {
+                *delay_sec = Some(delay_sec.unwrap_or(delay));
+            }
+            _ => {}
         }
     }
 }
@@ -127,7 +98,7 @@ impl Evaluate<&str, bool> for Filter {
 pub(crate) struct ServiceConfigDto {
     pub(crate) uuid: Uuid,
     #[serde_as(as = "DurationSeconds")]
-    pub(crate) default_timeout_sec: Duration,
+    pub(crate) default_delay_sec: Duration,
     pub(crate) characteristics: Vec<CharacteristicConfigDto>,
 }
 
@@ -185,7 +156,7 @@ mod tests {
                 device_name: Some(Filter::EndsWith("test".to_string())),
                 services: vec![ServiceConfigDto {
                     uuid: Uuid::nil(),
-                    default_timeout_sec: Duration::from_secs(5),
+                    default_delay_sec: Duration::from_secs(5),
                     characteristics: vec![
                         CharacteristicConfigDto::Subscribe {
                             history_size: 10,

@@ -3,14 +3,17 @@ peripherals:
     device_id: !Equals 'D4:B7:67:56:DC:3B'
     services:
       - uuid: '5c853275-723b-4754-a329-969d4bc8121e'
-        default_timeout_sec: 60
+        default_delay_sec: 60
         characteristics:
           - !Subscribe
             name: 'Temperature'
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
             history_size: 10
-          - !Poll
+            converter: !Signed { l: 2, m: 1, d: -2, b: 0 }
+            delay_sec: 5
+          - !Subscribe
             name: 'Pressure'
             uuid: '00002a6d-0000-1000-8000-00805f9b34fb'
-            timeout: 60
+            delay_sec: 5
             history_size: 10
+            converter: !Unsigned { l: 4, m: 1, d: -1, b: 0 }
