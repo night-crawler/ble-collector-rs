@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::inner::conf::parse::{
-    CharacteristicConfigDto, Filter, PeripheralConfigDto, ServiceConfigDto,
+    CharacteristicConfig, Filter, PeripheralConfigDto, ServiceConfigDto,
 };
 use crate::inner::error::{CollectorError, CollectorResult};
 
@@ -34,16 +34,16 @@ impl Display for ServiceCharacteristicKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct FlatPeripheralConfig {
-    pub(crate) name: String,
+    pub(crate) name: Arc<String>,
     pub(crate) adapter: Option<Filter>,
     pub(crate) device_id: Option<Filter>,
     pub(crate) device_name: Option<Filter>,
 
-    pub(crate) service_map: HashMap<ServiceCharacteristicKey, Arc<CharacteristicConfigDto>>,
+    pub(crate) service_map: HashMap<ServiceCharacteristicKey, Arc<CharacteristicConfig>>,
 }
 
-impl From<(Uuid, &CharacteristicConfigDto)> for ServiceCharacteristicKey {
-    fn from((service_uuid, char_conf): (Uuid, &CharacteristicConfigDto)) -> Self {
+impl From<(Uuid, &CharacteristicConfig)> for ServiceCharacteristicKey {
+    fn from((service_uuid, char_conf): (Uuid, &CharacteristicConfig)) -> Self {
         Self {
             service_uuid,
             characteristic_uuid: *char_conf.uuid(),
@@ -81,7 +81,7 @@ impl TryFrom<PeripheralConfigDto> for FlatPeripheralConfig {
 
     fn try_from(value: PeripheralConfigDto) -> Result<Self, Self::Error> {
         let mut flat_conf = Self {
-            name: value.name,
+            name: Arc::new(value.name),
             adapter: value.adapter,
             device_id: value.device_id,
             device_name: value.device_name,

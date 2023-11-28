@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use regex::Regex;
@@ -12,16 +13,16 @@ use crate::inner::dto::PeripheralKey;
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub(crate) enum CharacteristicConfigDto {
+pub(crate) enum CharacteristicConfig {
     Subscribe {
-        name: Option<String>,
+        name: Option<Arc<String>>,
         uuid: Uuid,
         history_size: usize,
         #[serde(default)]
         converter: Converter,
     },
     Poll {
-        name: Option<String>,
+        name: Option<Arc<String>>,
         uuid: Uuid,
         #[serde_as(as = "Option<DurationSeconds>")]
         delay_sec: Option<Duration>,
@@ -31,11 +32,11 @@ pub(crate) enum CharacteristicConfigDto {
     },
 }
 
-impl CharacteristicConfigDto {
+impl CharacteristicConfig {
     pub(crate) fn uuid(&self) -> &Uuid {
         match self {
-            CharacteristicConfigDto::Subscribe { uuid, .. } => uuid,
-            CharacteristicConfigDto::Poll { uuid, .. } => uuid,
+            CharacteristicConfig::Subscribe { uuid, .. } => uuid,
+            CharacteristicConfig::Poll { uuid, .. } => uuid,
         }
     }
 
@@ -45,6 +46,13 @@ impl CharacteristicConfigDto {
                 *delay_sec = Some(delay_sec.unwrap_or(delay));
             }
             _ => {}
+        }
+    }
+
+    pub(crate) fn name(&self) -> Option<Arc<String>> {
+        match self {
+            CharacteristicConfig::Subscribe { name, .. } => name.clone(),
+            CharacteristicConfig::Poll { name, .. } => name.clone(),
         }
     }
 }
@@ -99,7 +107,7 @@ pub(crate) struct ServiceConfigDto {
     pub(crate) uuid: Uuid,
     #[serde_as(as = "DurationSeconds")]
     pub(crate) default_delay_sec: Duration,
-    pub(crate) characteristics: Vec<CharacteristicConfigDto>,
+    pub(crate) characteristics: Vec<CharacteristicConfig>,
 }
 
 #[serde_as]
@@ -158,13 +166,13 @@ mod tests {
                     uuid: Uuid::nil(),
                     default_delay_sec: Duration::from_secs(5),
                     characteristics: vec![
-                        CharacteristicConfigDto::Subscribe {
+                        CharacteristicConfig::Subscribe {
                             history_size: 10,
                             name: Some("test".to_string()),
                             uuid: Uuid::nil(),
                             converter: Default::default(),
                         },
-                        CharacteristicConfigDto::Poll {
+                        CharacteristicConfig::Poll {
                             history_size: 10,
                             name: Some("test".to_string()),
                             uuid: Uuid::nil(),

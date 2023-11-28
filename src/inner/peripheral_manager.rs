@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use crate::inner::conf::flat::{FlatPeripheralConfig, ServiceCharacteristicKey};
 use crate::inner::conf::manager::CONFIGURATION_MANAGER;
-use crate::inner::conf::parse::CharacteristicConfigDto;
+use crate::inner::conf::parse::CharacteristicConfig;
 use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::dto::PeripheralKey;
 use crate::inner::error::{CollectorError, CollectorResult};
@@ -57,7 +57,7 @@ pub(crate) struct PeripheralManager {
     cache_monitor: JoinHandle<()>,
     handle_map: Arc<Mutex<HashMap<Arc<TaskKey>, JoinHandle<()>>>>,
     subscription_map: Arc<Mutex<HashMap<BDAddr, JoinHandle<()>>>>,
-    subscribed_characteristics: Arc<Mutex<HashMap<Arc<TaskKey>, Arc<CharacteristicConfigDto>>>>,
+    subscribed_characteristics: Arc<Mutex<HashMap<Arc<TaskKey>, Arc<CharacteristicConfig>>>>,
     payload_sender: AsyncSender<CharacteristicPayload>,
     payload_receiver: AsyncReceiver<CharacteristicPayload>,
 }
@@ -65,9 +65,26 @@ pub(crate) struct PeripheralManager {
 struct ConnectionContext {
     peripheral: Arc<Peripheral>,
     characteristic: Characteristic,
-    characteristic_config: Arc<CharacteristicConfigDto>,
+    characteristic_config: Arc<CharacteristicConfig>,
     task_key: Arc<TaskKey>,
     peripheral_config: Arc<FlatPeripheralConfig>,
+}
+
+impl Display for ConnectionContext {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let name = self
+            .characteristic_config
+            .name()
+            .unwrap_or(Arc::new("".to_string()));
+        write!(
+            f,
+            "{}[{}]::{}/{name}[{}]",
+            self.peripheral_config.name,
+            self.peripheral.address(),
+            self.characteristic.service_uuid,
+            self.characteristic.uuid
+        )
+    }
 }
 
 impl Drop for PeripheralManager {
@@ -185,7 +202,7 @@ impl PeripheralManager {
                 continue;
             };
 
-            let connection_bundle = ConnectionContext {
+            let ctx = ConnectionContext {
                 peripheral: Arc::clone(&peripheral),
                 characteristic,
                 characteristic_config: conf,
@@ -193,7 +210,7 @@ impl PeripheralManager {
                 peripheral_config: Arc::clone(&peripheral_config),
             };
 
-            self.clone().handle_connect(connection_bundle).await?;
+            self.clone().handle_connect(ctx).await?;
         }
 
         Ok(())
@@ -209,94 +226,71 @@ impl PeripheralManager {
                 .is_some()
     }
 
-    async fn handle_connect(
-        self: Arc<Self>,
-        connection_context: ConnectionContext,
-    ) -> CollectorResult<()> {
-        let tk = connection_context.task_key.clone();
+    async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
+        let tk = ctx.task_key.clone();
         let self_clone = Arc::clone(&self);
 
-        match connection_context.characteristic_config.as_ref() {
-            CharacteristicConfigDto::Subscribe { .. } => {
-                self.subscribe(&connection_context).await?;
-
-                let subscribed_characteristics = Arc::clone(&self.subscribed_characteristics);
-
-                let mut notification_handles_map = self.subscription_map.lock().await;
-                notification_handles_map
-                    .entry(connection_context.task_key.address)
+        match ctx.characteristic_config.as_ref() {
+            CharacteristicConfig::Subscribe { .. } => {
+                self.subscribe(&ctx).await?;
+                self.subscription_map
+                    .lock()
+                    .await
+                    .entry(ctx.task_key.address)
                     .or_insert_with(|| {
-                        let subscription_map_clone = self.subscription_map.clone();
                         tokio::spawn(async move {
-                            let result = self_clone.block_on_notifying(connection_context).await;
-                            warn!("Ended subscription {}: {:?}", tk, result);
-                            // TODO: remove all, not just the one that triggered it
-                            subscribed_characteristics.lock().await.remove(&tk);
-
-                            if let Some(handle) =
-                                subscription_map_clone.lock().await.remove(&tk.address)
-                            {
-                                handle.abort();
-                            }
+                            let msg = format!("Ended subscription {ctx}");
+                            let res = self_clone.clone().block_on_notifying(ctx).await;
+                            warn!("{msg}: {res:?}");
+                            self_clone.abort_subscription(tk.clone()).await;
                         })
                     });
             }
-            CharacteristicConfigDto::Poll { .. } => {
-                let mut handle_map = self.handle_map.lock().await;
-                handle_map.entry(tk.clone()).or_insert_with(|| {
-                    let handle_map_clone = Arc::clone(&self.handle_map);
-
-                    tokio::spawn(async move {
-                        let res = self_clone.block_on_polling(connection_context).await;
-                        warn!("Ended polling {}: {:?}", tk, res);
-                        if let Some(handle) = handle_map_clone.lock().await.remove(&tk) {
-                            handle.abort()
-                        }
-                    })
-                });
+            CharacteristicConfig::Poll { .. } => {
+                self.handle_map
+                    .lock()
+                    .await
+                    .entry(tk.clone())
+                    .or_insert_with(|| {
+                        tokio::spawn(async move {
+                            let msg = format!("Ended polling {ctx}");
+                            let res = self_clone.clone().block_on_polling(ctx).await;
+                            warn!("{msg}: {res:?}");
+                            self_clone.abort_polling(tk.clone()).await;
+                        })
+                    });
             }
         }
         Ok(())
     }
 
-    async fn block_on_notifying(
-        self: Arc<Self>,
-        connection_context: ConnectionContext,
-    ) -> CollectorResult<()> {
-        info!(
-            "Subscribing to `{}` / {}",
-            connection_context.peripheral_config.name, connection_context.task_key
-        );
-        let mut notification_stream = connection_context.peripheral.notifications().await?;
+    async fn abort_subscription(&self, tk: Arc<TaskKey>) {
+        let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
+        subscribed_characteristics.retain(|present_tk, _| present_tk.address != tk.address);
 
-        while let Some(event) = notification_stream.next().await {
-            let Some(conf) = self.get_conf(&connection_context, event.uuid).await else {
-                continue;
-            };
-            let CharacteristicConfigDto::Subscribe { converter, .. } = conf.as_ref() else {
-                return Err(CollectorError::UnexpectedCharacteristicConfiguration(conf));
-            };
-
-            let value = converter.convert(event.value)?;
-            let value = CharacteristicPayload {
-                created_at: Instant::now(),
-                value,
-                task_key: connection_context.task_key.clone(),
-            };
-            self.payload_sender.send(value).await?;
+        if let Some(handle) = self.subscription_map.lock().await.remove(&tk.address) {
+            handle.abort();
+        } else {
+            warn!("Can't abort for device {}: no handle found", tk);
         }
-
-        Err(CollectorError::EndOfStream)
     }
 
-    async fn get_conf(
+    async fn abort_polling(&self, tk: Arc<TaskKey>) {
+        if let Some(handle) = self.handle_map.lock().await.remove(&tk) {
+            handle.abort();
+        } else {
+            warn!("Can't abort for device {}: no handle found", tk);
+        }
+    }
+
+    async fn get_characteristic_conf(
         &self,
-        connection_context: &ConnectionContext,
+        ctx: &ConnectionContext,
         characteristic_uuid: Uuid,
-    ) -> Option<Arc<CharacteristicConfigDto>> {
+    ) -> Option<Arc<CharacteristicConfig>> {
         let task_key = TaskKey {
-            address: connection_context.task_key.address,
-            service_uuid: connection_context.task_key.service_uuid,
+            address: ctx.task_key.address,
+            service_uuid: ctx.task_key.service_uuid,
             characteristic_uuid,
         };
         self.subscribed_characteristics
@@ -306,62 +300,75 @@ impl PeripheralManager {
             .cloned()
     }
 
-    async fn subscribe(&self, connection_context: &ConnectionContext) -> CollectorResult<()> {
+    async fn subscribe(&self, ctx: &ConnectionContext) -> CollectorResult<()> {
         let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
 
         subscribed_characteristics
-            .entry(connection_context.task_key.clone())
-            .or_insert(connection_context.characteristic_config.clone());
+            .entry(ctx.task_key.clone())
+            .or_insert(ctx.characteristic_config.clone());
 
-        connection_context
-            .peripheral
-            .subscribe(&connection_context.characteristic)
-            .await?;
+        ctx.peripheral.subscribe(&ctx.characteristic).await?;
         Ok(())
     }
+}
 
-    async fn block_on_polling(
-        self: Arc<Self>,
-        connection_bundle: ConnectionContext,
-    ) -> CollectorResult<()> {
-        info!(
-            "Polling `{}` / {}",
-            connection_bundle.peripheral_config.name, connection_bundle.task_key
-        );
+impl PeripheralManager {
+    async fn block_on_polling(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
+        info!("Polling {ctx}");
 
-        let CharacteristicConfigDto::Poll {
+        let CharacteristicConfig::Poll {
             delay_sec,
             ref converter,
             ..
-        } = connection_bundle.characteristic_config.as_ref()
+        } = ctx.characteristic_config.as_ref()
         else {
             return Err(CollectorError::UnexpectedCharacteristicConfiguration(
-                connection_bundle.characteristic_config.clone(),
+                ctx.characteristic_config.clone(),
             ));
         };
 
         let delay_sec = delay_sec.with_context(|| {
             format!(
                 "Delay was not updated for characteristic conf {:?}",
-                connection_bundle.characteristic_config
+                ctx.characteristic_config
             )
         })?;
 
         loop {
-            let value = connection_bundle
-                .peripheral
-                .read(&connection_bundle.characteristic)
-                .await?;
+            let value = ctx.peripheral.read(&ctx.characteristic).await?;
             let value = converter.convert(value)?;
-
             let value = CharacteristicPayload {
                 created_at: Instant::now(),
                 value,
-                task_key: connection_bundle.task_key.clone(),
+                task_key: ctx.task_key.clone(),
             };
             self.payload_sender.send(value).await?;
             tokio::time::sleep(delay_sec).await;
         }
+    }
+
+    async fn block_on_notifying(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
+        info!("Subscribing to {ctx}");
+        let mut notification_stream = ctx.peripheral.notifications().await?;
+
+        while let Some(event) = notification_stream.next().await {
+            let Some(conf) = self.get_characteristic_conf(&ctx, event.uuid).await else {
+                continue;
+            };
+            let CharacteristicConfig::Subscribe { converter, .. } = conf.as_ref() else {
+                return Err(CollectorError::UnexpectedCharacteristicConfiguration(conf));
+            };
+
+            let value = converter.convert(event.value)?;
+            let value = CharacteristicPayload {
+                created_at: Instant::now(),
+                value,
+                task_key: ctx.task_key.clone(),
+            };
+            self.payload_sender.send(value).await?;
+        }
+
+        Err(CollectorError::EndOfStream)
     }
 }
 

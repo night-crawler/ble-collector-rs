@@ -15,7 +15,7 @@ lazy_static! {
 
 #[derive(Default)]
 pub(crate) struct ConfigurationManager {
-    peripheral_map: Arc<Mutex<HashMap<String, Arc<FlatPeripheralConfig>>>>,
+    peripheral_map: Arc<Mutex<HashMap<Arc<String>, Arc<FlatPeripheralConfig>>>>,
 }
 
 impl ConfigurationManager {
