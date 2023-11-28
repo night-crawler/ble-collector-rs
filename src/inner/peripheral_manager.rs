@@ -202,14 +202,17 @@ impl PeripheralManager {
     async fn check_characteristic_is_handled(&self, task_key: &TaskKey) -> bool {
         self.handle_map.lock().await.get(task_key).is_some()
             || self
-            .subscribed_characteristics
-            .lock()
-            .await
-            .get(task_key)
-            .is_some()
+                .subscribed_characteristics
+                .lock()
+                .await
+                .get(task_key)
+                .is_some()
     }
 
-    async fn handle_connect(self: Arc<Self>, connection_context: ConnectionContext) -> CollectorResult<()> {
+    async fn handle_connect(
+        self: Arc<Self>,
+        connection_context: ConnectionContext,
+    ) -> CollectorResult<()> {
         let tk = connection_context.task_key.clone();
         let self_clone = Arc::clone(&self);
 
@@ -256,8 +259,14 @@ impl PeripheralManager {
         Ok(())
     }
 
-    async fn block_on_notifying(self: Arc<Self>, connection_context: ConnectionContext) -> CollectorResult<()> {
-        info!("Subscribing to `{}` / {}", connection_context.peripheral_config.name, connection_context.task_key);
+    async fn block_on_notifying(
+        self: Arc<Self>,
+        connection_context: ConnectionContext,
+    ) -> CollectorResult<()> {
+        info!(
+            "Subscribing to `{}` / {}",
+            connection_context.peripheral_config.name, connection_context.task_key
+        );
         let mut notification_stream = connection_context.peripheral.notifications().await?;
 
         while let Some(event) = notification_stream.next().await {
@@ -280,7 +289,11 @@ impl PeripheralManager {
         Err(CollectorError::EndOfStream)
     }
 
-    async fn get_conf(&self, connection_context: &ConnectionContext, characteristic_uuid: Uuid) -> Option<Arc<CharacteristicConfigDto>> {
+    async fn get_conf(
+        &self,
+        connection_context: &ConnectionContext,
+        characteristic_uuid: Uuid,
+    ) -> Option<Arc<CharacteristicConfigDto>> {
         let task_key = TaskKey {
             address: connection_context.task_key.address,
             service_uuid: connection_context.task_key.service_uuid,
@@ -294,9 +307,7 @@ impl PeripheralManager {
     }
 
     async fn subscribe(&self, connection_context: &ConnectionContext) -> CollectorResult<()> {
-        let mut subscribed_characteristics = self.subscribed_characteristics
-            .lock()
-            .await;
+        let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
 
         subscribed_characteristics
             .entry(connection_context.task_key.clone())
@@ -313,18 +324,21 @@ impl PeripheralManager {
         self: Arc<Self>,
         connection_bundle: ConnectionContext,
     ) -> CollectorResult<()> {
-        info!("Polling `{}` / {}", connection_bundle.peripheral_config.name, connection_bundle.task_key);
+        info!(
+            "Polling `{}` / {}",
+            connection_bundle.peripheral_config.name, connection_bundle.task_key
+        );
 
         let CharacteristicConfigDto::Poll {
             delay_sec,
             ref converter,
             ..
         } = connection_bundle.characteristic_config.as_ref()
-            else {
-                return Err(CollectorError::UnexpectedCharacteristicConfiguration(
-                    connection_bundle.characteristic_config.clone(),
-                ));
-            };
+        else {
+            return Err(CollectorError::UnexpectedCharacteristicConfiguration(
+                connection_bundle.characteristic_config.clone(),
+            ));
+        };
 
         let delay_sec = delay_sec.with_context(|| {
             format!(
@@ -350,7 +364,6 @@ impl PeripheralManager {
         }
     }
 }
-
 
 async fn process_characteristic_payload(
     peripheral_manager: Arc<PeripheralManager>,
@@ -382,7 +395,8 @@ async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorR
                 id: peripheral_id, ..
             } => {
                 let mut peripheral_key = PeripheralKey::try_from(peripheral_id)?;
-                if let Some(peripheral) = peripheral_manager.clone()
+                if let Some(peripheral) = peripheral_manager
+                    .clone()
                     .get_peripheral(&peripheral_key.peripheral_address)
                     .await?
                 {
@@ -400,7 +414,8 @@ async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorR
                     .await
                 {
                     // info!("Found matching configuration: {:?}", config);
-                    peripheral_manager.clone()
+                    peripheral_manager
+                        .clone()
                         .connect_all_matching(peripheral_key, config)
                         .await?;
                 }
