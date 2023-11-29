@@ -28,8 +28,8 @@ pub(crate) enum CollectorError {
     #[error("Duplicate configuration: {0}")]
     DuplicateConfiguration(String),
 
-    #[error("Duplicate service configuration {service_uuid}")]
-    DuplicateServiceConfiguration { service_uuid: Uuid },
+    #[error("Duplicate service configuration {0}")]
+    DuplicateServiceConfiguration(Uuid),
 
     #[error("Duplicate service configuration {0}")]
     DuplicateCharacteristicConfiguration(ServiceCharacteristicKey),

@@ -62,7 +62,7 @@ impl FlatPeripheralConfig {
             }
 
             if self.service_map.contains_key(&key) {
-                return Err(CollectorError::DuplicateCharacteristicConfiguration(key));
+                return Err(CollectorError::DuplicateServiceConfiguration(service_uuid));
             }
         }
 
