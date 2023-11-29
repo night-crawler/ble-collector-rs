@@ -41,11 +41,8 @@ impl CharacteristicConfig {
     }
 
     pub(crate) fn update_delay(&mut self, delay: Duration) {
-        match self {
-            Self::Poll { delay_sec, .. } => {
-                *delay_sec = Some(delay_sec.unwrap_or(delay));
-            }
-            _ => {}
+        if let Self::Poll { delay_sec, .. } = self {
+            *delay_sec = Some(delay_sec.unwrap_or(delay));
         }
     }
 

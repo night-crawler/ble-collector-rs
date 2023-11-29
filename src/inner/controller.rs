@@ -7,6 +7,7 @@ use crate::inner::conf::flat::FlatPeripheralConfig;
 use crate::inner::dto::AdapterDto;
 use crate::inner::error::CollectorError;
 use crate::inner::http_error::JsonResult;
+use crate::inner::storage::Storage;
 
 #[get("/adapters")]
 pub(crate) async fn adapters(
@@ -28,4 +29,11 @@ pub(crate) async fn configurations(
         .list_peripheral_configs()
         .await
         .into())
+}
+
+#[get("/data")]
+pub(crate) async fn data(
+    collector_state: &rocket::State<CollectorState>,
+) -> JsonResult<Arc<Storage>, CollectorError> {
+    Ok(collector_state.storage.clone().into())
 }

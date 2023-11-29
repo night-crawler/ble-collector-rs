@@ -10,10 +10,33 @@ peripherals:
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
             history_size: 10
             converter: !Signed { l: 2, m: 1, d: -2, b: 0 }
-            delay_sec: 5
           - !Subscribe
             name: 'Pressure'
             uuid: '00002a6d-0000-1000-8000-00805f9b34fb'
-            delay_sec: 5
             history_size: 10
             converter: !Unsigned { l: 4, m: 1, d: -1, b: 0 }
+          - !Subscribe
+            name: 'Humidity'
+            uuid: '00002a6f-0000-1000-8000-00805f9b34fb'
+            history_size: 10
+            converter: !Unsigned { l: 2, m: 1, d: -2, b: 0 }
+          - !Poll
+            name: 'Timeout'
+            uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
+            history_size: 100
+            converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+          - !Poll
+            name: 'Humidity Offset'
+            uuid: 'a0e4a2ba-1234-4321-0001-00805f9b34fb'
+            history_size: 100
+            converter: !F32
+          - !Poll
+            name: 'Temperature Offset'
+            uuid: 'a0e4a2ba-1234-4321-0002-00805f9b34fb'
+            history_size: 100
+            converter: !F32
+          - !Poll
+            name: 'Pressure Offset'
+            uuid: 'a0e4a2ba-1234-4321-0003-00805f9b34fb'
+            history_size: 100
+            converter: !F32

@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::Context;
 use btleplug::api::{BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Peripheral};
+use chrono::Utc;
 use futures_util::StreamExt;
 use kanal::AsyncSender;
 use log::{info, warn};
@@ -40,7 +41,7 @@ impl Display for TaskKey {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CharacteristicPayload {
-    pub(crate) created_at: Instant,
+    pub(crate) created_at: chrono::DateTime<Utc>,
     pub(crate) value: CharacteristicValue,
     pub(crate) task_key: Arc<TaskKey>,
     pub(crate) conf: Arc<CharacteristicConfig>,
@@ -70,6 +71,16 @@ struct ConnectionContext {
     task_key: Arc<TaskKey>,
     peripheral_config: Arc<FlatPeripheralConfig>,
 }
+
+impl TaskKey {
+    fn with_characteristic(&self, characteristic_uuid: Uuid) -> Self {
+        TaskKey {
+            characteristic_uuid,
+            ..*self
+        }
+    }
+}
+
 
 impl Display for ConnectionContext {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -158,13 +169,9 @@ impl PeripheralManager {
             let self_clone = Arc::clone(&self);
             join_set.spawn(async move { discover_task(self_clone).await });
         }
-        // {
-        //     let self_clone = Arc::clone(&self);
-        //     join_set.spawn(async move { process_characteristic_payload(self_clone).await });
-        // }
 
         if let Some(result) = join_set.join_next().await {
-            info!("Ending everything: {result:?}");
+            info!("Discovery task for adapter {:?} has ended: {result:?}", self.adapter);
         }
 
         Ok(())
@@ -222,11 +229,11 @@ impl PeripheralManager {
     async fn check_characteristic_is_handled(&self, task_key: &TaskKey) -> bool {
         self.handle_map.lock().await.get(task_key).is_some()
             || self
-                .subscribed_characteristics
-                .lock()
-                .await
-                .get(task_key)
-                .is_some()
+            .subscribed_characteristics
+            .lock()
+            .await
+            .get(task_key)
+            .is_some()
     }
 
     async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
@@ -288,18 +295,12 @@ impl PeripheralManager {
 
     async fn get_characteristic_conf(
         &self,
-        ctx: &ConnectionContext,
-        characteristic_uuid: Uuid,
+        task_key: &TaskKey
     ) -> Option<Arc<CharacteristicConfig>> {
-        let task_key = TaskKey {
-            address: ctx.task_key.address,
-            service_uuid: ctx.task_key.service_uuid,
-            characteristic_uuid,
-        };
         self.subscribed_characteristics
             .lock()
             .await
-            .get(&task_key)
+            .get(task_key)
             .cloned()
     }
 
@@ -324,15 +325,15 @@ impl PeripheralManager {
             ref converter,
             ..
         } = ctx.characteristic_config.as_ref()
-        else {
-            return Err(CollectorError::UnexpectedCharacteristicConfiguration(
-                ctx.characteristic_config.clone(),
-            ));
-        };
+            else {
+                return Err(CollectorError::UnexpectedCharacteristicConfiguration(
+                    ctx.characteristic_config.clone(),
+                ));
+            };
 
         let delay_sec = delay_sec.with_context(|| {
             format!(
-                "Delay was not updated for characteristic conf {:?}",
+                "Delay was not set for characteristic conf {:?}",
                 ctx.characteristic_config
             )
         })?;
@@ -341,7 +342,7 @@ impl PeripheralManager {
             let value = ctx.peripheral.read(&ctx.characteristic).await?;
             let value = converter.convert(value)?;
             let value = CharacteristicPayload {
-                created_at: Instant::now(),
+                created_at: chrono::offset::Utc::now(),
                 value,
                 task_key: ctx.task_key.clone(),
                 conf: Arc::clone(&ctx.characteristic_config),
@@ -356,7 +357,8 @@ impl PeripheralManager {
         let mut notification_stream = ctx.peripheral.notifications().await?;
 
         while let Some(event) = notification_stream.next().await {
-            let Some(conf) = self.get_characteristic_conf(&ctx, event.uuid).await else {
+            let task_key = Arc::new(ctx.task_key.with_characteristic(event.uuid));
+            let Some(conf) = self.get_characteristic_conf(&task_key).await else {
                 continue;
             };
             let CharacteristicConfig::Subscribe { converter, .. } = conf.as_ref() else {
@@ -365,10 +367,10 @@ impl PeripheralManager {
 
             let value = converter.convert(event.value)?;
             let value = CharacteristicPayload {
-                created_at: Instant::now(),
+                created_at: chrono::offset::Utc::now(),
                 value,
-                task_key: ctx.task_key.clone(),
-                conf: Arc::clone(&ctx.characteristic_config),
+                task_key,
+                conf,
             };
             self.payload_sender.send(value).await?;
         }
@@ -376,19 +378,6 @@ impl PeripheralManager {
         Err(CollectorError::EndOfStream)
     }
 }
-
-// async fn process_characteristic_payload(
-//     peripheral_manager: Arc<PeripheralManager>,
-// ) -> CollectorResult<()> {
-//     let receiver = peripheral_manager.payload_receiver.clone();
-//     let mut stream = receiver.stream();
-//     while let Some(characteristic_payload) = stream.next().await {
-//         // CONFIGURATION_MANAGER.get_matching_config()
-//         info!("Handled {}", characteristic_payload);
-//     }
-//
-//     Err(CollectorError::EndOfStream)
-// }
 
 async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorResult<()> {
     let mut stream = peripheral_manager.adapter.events().await?;

@@ -10,10 +10,10 @@ use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::args::Args;
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::parse::CollectorConfigurationDto;
-use crate::inner::controller::{adapters, configurations};
+use crate::inner::controller::{adapters, configurations, data};
 use crate::inner::error::CollectorResult;
 use crate::inner::peripheral_manager::CharacteristicPayload;
-use crate::inner::storage::PeripheralStorage;
+use crate::inner::storage::Storage;
 
 mod inner;
 
@@ -44,7 +44,7 @@ fn init_logging() -> CollectorResult<()> {
 pub(crate) struct CollectorState {
     pub(crate) configuration_manager: Arc<ConfigurationManager>,
     pub(crate) adapter_manager: Arc<AdapterManager>,
-    pub(crate) storage: Arc<PeripheralStorage>,
+    pub(crate) storage: Arc<Storage>,
 }
 
 #[tokio::main]
@@ -63,7 +63,7 @@ async fn main() -> CollectorResult<()> {
         Arc::clone(&configuration_manager),
         sender,
     ));
-    let storage = Arc::new(PeripheralStorage::new());
+    let storage = Arc::new(Storage::new());
     adapter_manager.init().await?;
 
     let mut join_set: JoinSet<CollectorResult<()>> = JoinSet::new();
@@ -97,7 +97,7 @@ async fn main() -> CollectorResult<()> {
     join_set.spawn(async move {
         rocket::build()
             .manage(collector_state)
-            .mount("/ble", routes![adapters, configurations])
+            .mount("/ble", routes![adapters, configurations, data])
             .launch()
             .await?;
         Ok(())

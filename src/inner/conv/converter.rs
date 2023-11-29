@@ -25,6 +25,7 @@ pub(crate) enum Converter {
     #[default]
     Raw,
     Utf8,
+    F32,
     Signed {
         l: BoundedU8<0, 8>,
         m: BoundedI8<-10, 10>,
@@ -46,6 +47,7 @@ impl Display for Converter {
             Converter::Utf8 => write!(f, "Utf8"),
             Converter::Signed { l, m, d, b } => write!(f, "Signed[{l}]({m} {d} {b})",),
             Converter::Unsigned { l, m, d, b } => write!(f, "Unsigned[{l}]({m} {d} {b})",),
+            Converter::F32 => write!(f, "F32")
         }
     }
 }
@@ -115,13 +117,27 @@ impl Converter {
                     });
                 }
                 Ok(())
-            }
+            },
+            Converter::F32 => {
+                if value.len() != 4 {
+                    return Err(ConversionError::LenMismatch {
+                        expected: 4,
+                        actual: value.len(),
+                    });
+                }
+                Ok(())
+            },
             _ => Ok(()),
         }
     }
     pub(crate) fn convert(&self, value: Vec<u8>) -> Result<CharacteristicValue, ConversionError> {
         // assume i64 will suffice for all conversions for now
         match self {
+            Converter::F32 => {
+                self.check_length(&value)?;
+                let value = f32::from_le_bytes(<[u8; 4]>::try_from(value).unwrap());
+                Ok(CharacteristicValue::F64(value as f64))
+            }
             Converter::Raw => Ok(CharacteristicValue::Raw(value)),
             Converter::Utf8 => {
                 let result = String::from_utf8(value)?;
