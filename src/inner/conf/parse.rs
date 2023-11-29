@@ -55,6 +55,13 @@ impl CharacteristicConfig {
             CharacteristicConfig::Poll { name, .. } => name.clone(),
         }
     }
+
+    pub(crate) fn history_size(&self) -> usize {
+        match self {
+            CharacteristicConfig::Subscribe { history_size, .. } => *history_size,
+            CharacteristicConfig::Poll { history_size, .. } => *history_size,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,13 +175,13 @@ mod tests {
                     characteristics: vec![
                         CharacteristicConfig::Subscribe {
                             history_size: 10,
-                            name: Some("test".to_string()),
+                            name: Some("test".to_string().into()),
                             uuid: Uuid::nil(),
                             converter: Default::default(),
                         },
                         CharacteristicConfig::Poll {
                             history_size: 10,
-                            name: Some("test".to_string()),
+                            name: Some("test".to_string().into()),
                             uuid: Uuid::nil(),
                             delay_sec: Some(Duration::from_secs(1)),
                             converter: Default::default(),

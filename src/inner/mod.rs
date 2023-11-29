@@ -7,4 +7,4 @@ pub(crate) mod dto;
 pub(crate) mod error;
 pub(crate) mod http_error;
 pub(crate) mod peripheral_manager;
-pub(crate) mod store;
+pub(crate) mod storage;

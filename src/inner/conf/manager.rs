@@ -1,17 +1,12 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use lazy_static::lazy_static;
 use tokio::sync::Mutex;
 
 use crate::inner::conf::flat::FlatPeripheralConfig;
 use crate::inner::conf::parse::{Evaluate, PeripheralConfigDto};
 use crate::inner::dto::PeripheralKey;
 use crate::inner::error::{CollectorError, CollectorResult};
-
-lazy_static! {
-    pub(crate) static ref CONFIGURATION_MANAGER: ConfigurationManager = Default::default();
-}
 
 #[derive(Default)]
 pub(crate) struct ConfigurationManager {

@@ -39,6 +39,12 @@ pub(crate) enum CollectorError {
 
     #[error("Conversion error: {0:?}")]
     ConversionError(#[from] ConversionError),
+
+    #[error("Failed to set the logger: {0:?}")]
+    SetLoggerError(#[from] log::SetLoggerError),
+
+    #[error("Rocket error: {0:?}")]
+    RocketError(#[from] rocket::Error),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

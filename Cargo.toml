@@ -31,6 +31,8 @@ bounded-integer = { version = "0.5", features = ["serde1", "std", "types"] }
 num-bigint = "0.4"
 num-traits = "0.2"
 arc-swap = "1.6"
+dashmap = { version = "5.5", features = ["serde"] }
+chrono = {version = "0.4", features = ["serde"]}
 
 [dev-dependencies]
 float-cmp = "0.9.0"

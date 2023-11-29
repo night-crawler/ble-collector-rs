@@ -1,33 +1,41 @@
 use std::sync::Arc;
 
+use crate::inner::conf::manager::ConfigurationManager;
 use btleplug::api::{Central, Manager as _};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::stream;
 use futures_util::StreamExt;
-use lazy_static::lazy_static;
-use log::{error, info};
+use kanal::AsyncSender;
+use log::{info, warn};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
 use crate::inner::dto::{AdapterDto, PeripheralDto};
 use crate::inner::error::{CollectorError, CollectorResult};
-use crate::inner::peripheral_manager::PeripheralManager;
+use crate::inner::peripheral_manager::{CharacteristicPayload, PeripheralManager};
 
-lazy_static! {
-    pub(crate) static ref ADAPTER_MANAGER: AdapterManager = Default::default();
-}
-
-#[derive(Default)]
 pub(crate) struct AdapterManager {
     device_managers: Mutex<Vec<Arc<PeripheralManager>>>,
+    sender: AsyncSender<CharacteristicPayload>,
+    configuration_manager: Arc<ConfigurationManager>,
 }
 
 impl AdapterManager {
-    pub(crate) async fn init(&self) -> btleplug::Result<()> {
+    pub(crate) fn new(
+        configuration_manager: Arc<ConfigurationManager>,
+        sender: AsyncSender<CharacteristicPayload>,
+    ) -> Self {
+        Self {
+            device_managers: Default::default(),
+            sender,
+            configuration_manager,
+        }
+    }
+    pub(crate) async fn init(&self) -> CollectorResult<()> {
         let manager = Manager::new().await?;
         let adapters = manager.adapters().await?;
         for adapter in adapters {
-            info!("Found adapter: {:?}", adapter);
+            info!("Discovered adapter: {:?}", adapter);
             self.add_adapter(adapter).await;
         }
         Ok(())
@@ -37,48 +45,24 @@ impl AdapterManager {
         self.device_managers
             .lock()
             .await
-            .push(Arc::new(PeripheralManager::new(adapter)))
+            .push(Arc::new(PeripheralManager::new(
+                adapter,
+                self.sender.clone(),
+                self.configuration_manager.clone(),
+            )));
     }
 
-    pub(crate) async fn start_discovery(&self) -> btleplug::Result<()> {
+    pub(crate) async fn start_discovery(&self) -> CollectorResult<()> {
         let mut join_set = JoinSet::new();
         for peripheral_manager in self.device_managers.lock().await.iter().cloned() {
             join_set.spawn(async move { peripheral_manager.start_discovery().await });
         }
 
         if let Some(result) = join_set.join_next().await {
-            info!("Ending discovery: {result:?}");
+            warn!("Peripheral discovery has ended: {result:?}");
         }
         // TODO: restart discovery and recreate everything if we've reached this point
         Ok(())
-    }
-
-    pub(crate) async fn get_peripheral_manager(
-        &self,
-        adapter: &Adapter,
-    ) -> Option<Arc<PeripheralManager>> {
-        let adapter_info = match adapter.adapter_info().await {
-            Ok(info) => info,
-            Err(err) => {
-                error!("Failed to get adapter info: {:?}", err);
-                return None;
-            }
-        };
-        let managers = self.device_managers.lock().await;
-        for manager in managers.iter() {
-            let manager_info = match manager.adapter.adapter_info().await {
-                Ok(info) => info,
-                Err(err) => {
-                    error!("Failed to get adapter info: {:?}", err);
-                    return None;
-                }
-            };
-            if manager_info == adapter_info {
-                return Some(Arc::clone(manager));
-            }
-        }
-        error!("Failed to find adapter manager for adapter: {:?}", adapter);
-        None
     }
 
     pub(crate) async fn describe_adapters(&self) -> CollectorResult<Vec<AdapterDto>> {

@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 use bounded_integer::{BoundedI8, BoundedU8};
 use num_bigint::{BigInt, BigUint};
 use num_traits::{FromBytes, ToPrimitive};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ConversionError {
@@ -56,6 +56,20 @@ pub(crate) enum CharacteristicValue {
     Utf8(String),
     I64(i64),
     F64(f64),
+}
+
+impl Serialize for CharacteristicValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            CharacteristicValue::Raw(value) => serializer.serialize_bytes(value),
+            CharacteristicValue::Utf8(value) => serializer.serialize_str(value),
+            CharacteristicValue::I64(value) => serializer.serialize_i64(*value),
+            CharacteristicValue::F64(value) => serializer.serialize_f64(*value),
+        }
+    }
 }
 
 impl Display for CharacteristicValue {

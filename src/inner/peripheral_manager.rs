@@ -7,7 +7,7 @@ use anyhow::Context;
 use btleplug::api::{BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Peripheral};
 use futures_util::StreamExt;
-use kanal::{AsyncReceiver, AsyncSender};
+use kanal::AsyncSender;
 use log::{info, warn};
 use retainer::Cache;
 use tokio::sync::Mutex;
@@ -15,7 +15,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use uuid::Uuid;
 
 use crate::inner::conf::flat::{FlatPeripheralConfig, ServiceCharacteristicKey};
-use crate::inner::conf::manager::CONFIGURATION_MANAGER;
+use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::parse::CharacteristicConfig;
 use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::dto::PeripheralKey;
@@ -43,6 +43,7 @@ pub(crate) struct CharacteristicPayload {
     pub(crate) created_at: Instant,
     pub(crate) value: CharacteristicValue,
     pub(crate) task_key: Arc<TaskKey>,
+    pub(crate) conf: Arc<CharacteristicConfig>,
 }
 
 impl Display for CharacteristicPayload {
@@ -59,7 +60,7 @@ pub(crate) struct PeripheralManager {
     subscription_map: Arc<Mutex<HashMap<BDAddr, JoinHandle<()>>>>,
     subscribed_characteristics: Arc<Mutex<HashMap<Arc<TaskKey>, Arc<CharacteristicConfig>>>>,
     payload_sender: AsyncSender<CharacteristicPayload>,
-    payload_receiver: AsyncReceiver<CharacteristicPayload>,
+    configuration_manager: Arc<ConfigurationManager>,
 }
 
 struct ConnectionContext {
@@ -94,14 +95,16 @@ impl Drop for PeripheralManager {
 }
 
 impl PeripheralManager {
-    pub(crate) fn new(adapter: Adapter) -> Self {
+    pub(crate) fn new(
+        adapter: Adapter,
+        sender: AsyncSender<CharacteristicPayload>,
+        configuration_manager: Arc<ConfigurationManager>,
+    ) -> Self {
         let cache = Arc::new(Cache::new());
         let clone = cache.clone();
 
         let monitor =
             tokio::spawn(async move { clone.monitor(10, 0.25, Duration::from_secs(10)).await });
-
-        let (sender, receiver) = kanal::unbounded_async();
 
         Self {
             adapter: Arc::new(adapter),
@@ -111,7 +114,7 @@ impl PeripheralManager {
             subscription_map: Default::default(),
             subscribed_characteristics: Default::default(),
             payload_sender: sender,
-            payload_receiver: receiver,
+            configuration_manager,
         }
     }
 
@@ -155,10 +158,10 @@ impl PeripheralManager {
             let self_clone = Arc::clone(&self);
             join_set.spawn(async move { discover_task(self_clone).await });
         }
-        {
-            let self_clone = Arc::clone(&self);
-            join_set.spawn(async move { process_characteristic_payload(self_clone).await });
-        }
+        // {
+        //     let self_clone = Arc::clone(&self);
+        //     join_set.spawn(async move { process_characteristic_payload(self_clone).await });
+        // }
 
         if let Some(result) = join_set.join_next().await {
             info!("Ending everything: {result:?}");
@@ -341,6 +344,7 @@ impl PeripheralManager {
                 created_at: Instant::now(),
                 value,
                 task_key: ctx.task_key.clone(),
+                conf: Arc::clone(&ctx.characteristic_config),
             };
             self.payload_sender.send(value).await?;
             tokio::time::sleep(delay_sec).await;
@@ -364,6 +368,7 @@ impl PeripheralManager {
                 created_at: Instant::now(),
                 value,
                 task_key: ctx.task_key.clone(),
+                conf: Arc::clone(&ctx.characteristic_config),
             };
             self.payload_sender.send(value).await?;
         }
@@ -372,18 +377,18 @@ impl PeripheralManager {
     }
 }
 
-async fn process_characteristic_payload(
-    peripheral_manager: Arc<PeripheralManager>,
-) -> CollectorResult<()> {
-    let receiver = peripheral_manager.payload_receiver.clone();
-    let mut stream = receiver.stream();
-    while let Some(characteristic_payload) = stream.next().await {
-        // CONFIGURATION_MANAGER.get_matching_config()
-        info!("Handled {}", characteristic_payload);
-    }
-
-    Err(CollectorError::EndOfStream)
-}
+// async fn process_characteristic_payload(
+//     peripheral_manager: Arc<PeripheralManager>,
+// ) -> CollectorResult<()> {
+//     let receiver = peripheral_manager.payload_receiver.clone();
+//     let mut stream = receiver.stream();
+//     while let Some(characteristic_payload) = stream.next().await {
+//         // CONFIGURATION_MANAGER.get_matching_config()
+//         info!("Handled {}", characteristic_payload);
+//     }
+//
+//     Err(CollectorError::EndOfStream)
+// }
 
 async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorResult<()> {
     let mut stream = peripheral_manager.adapter.events().await?;
@@ -416,7 +421,8 @@ async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorR
                 // if peripheral_manager.is_connected(&peripheral_key).await {
                 //     continue;
                 // }
-                if let Some(config) = CONFIGURATION_MANAGER
+                if let Some(config) = peripheral_manager
+                    .configuration_manager
                     .get_matching_config(&peripheral_key)
                     .await
                 {
@@ -427,7 +433,7 @@ async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorR
                         .await?;
                 }
             }
-            CentralEvent::DeviceDisconnected(peripheral_id) => {}
+            CentralEvent::DeviceDisconnected(_) => {}
         }
     }
     Err(CollectorError::EndOfStream)
