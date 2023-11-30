@@ -49,7 +49,21 @@ pub(crate) struct CharacteristicPayload {
 
 impl Display for CharacteristicPayload {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}: {}", self.task_key, self.value)
+        let parts = vec![
+            self.task_key.address.to_string(),
+            if let Some(name) = self.conf.service_name() {
+                name.to_string()
+            } else {
+                self.task_key.service_uuid.to_string()
+            },
+            if let Some(name) = self.conf.name() {
+                name.to_string()
+            } else {
+                self.task_key.characteristic_uuid.to_string()
+            },
+        ];
+
+        write!(f, "{}={}", parts.join(":"), self.value)
     }
 }
 
@@ -57,7 +71,7 @@ pub(crate) struct PeripheralManager {
     pub(crate) adapter: Arc<Adapter>,
     peripheral_cache: Arc<Cache<BDAddr, Arc<Peripheral>>>,
     cache_monitor: JoinHandle<()>,
-    handle_map: Arc<Mutex<HashMap<Arc<TaskKey>, JoinHandle<()>>>>,
+    poll_handle_map: Arc<Mutex<HashMap<Arc<TaskKey>, JoinHandle<()>>>>,
     subscription_map: Arc<Mutex<HashMap<BDAddr, JoinHandle<()>>>>,
     subscribed_characteristics: Arc<Mutex<HashMap<Arc<TaskKey>, Arc<CharacteristicConfig>>>>,
     payload_sender: AsyncSender<CharacteristicPayload>,
@@ -73,8 +87,9 @@ struct ConnectionContext {
 }
 
 impl TaskKey {
-    fn with_characteristic(&self, characteristic_uuid: Uuid) -> Self {
+    fn with_characteristic(&self, service_uuid: Uuid, characteristic_uuid: Uuid) -> Self {
         TaskKey {
+            service_uuid,
             characteristic_uuid,
             ..*self
         }
@@ -121,7 +136,7 @@ impl PeripheralManager {
             adapter: Arc::new(adapter),
             peripheral_cache: cache,
             cache_monitor: monitor,
-            handle_map: Default::default(),
+            poll_handle_map: Default::default(),
             subscription_map: Default::default(),
             subscribed_characteristics: Default::default(),
             payload_sender: sender,
@@ -227,7 +242,7 @@ impl PeripheralManager {
     }
 
     async fn check_characteristic_is_handled(&self, task_key: &TaskKey) -> bool {
-        self.handle_map.lock().await.get(task_key).is_some()
+        self.poll_handle_map.lock().await.get(task_key).is_some()
             || self
             .subscribed_characteristics
             .lock()
@@ -257,7 +272,7 @@ impl PeripheralManager {
                     });
             }
             CharacteristicConfig::Poll { .. } => {
-                self.handle_map
+                self.poll_handle_map
                     .lock()
                     .await
                     .entry(tk.clone())
@@ -286,7 +301,7 @@ impl PeripheralManager {
     }
 
     async fn abort_polling(&self, tk: Arc<TaskKey>) {
-        if let Some(handle) = self.handle_map.lock().await.remove(&tk) {
+        if let Some(handle) = self.poll_handle_map.lock().await.remove(&tk) {
             handle.abort();
         } else {
             warn!("Can't abort for device {}: no handle found", tk);
@@ -295,7 +310,7 @@ impl PeripheralManager {
 
     async fn get_characteristic_conf(
         &self,
-        task_key: &TaskKey
+        task_key: &TaskKey,
     ) -> Option<Arc<CharacteristicConfig>> {
         self.subscribed_characteristics
             .lock()
@@ -307,11 +322,20 @@ impl PeripheralManager {
     async fn subscribe(&self, ctx: &ConnectionContext) -> CollectorResult<()> {
         let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
 
-        subscribed_characteristics
-            .entry(ctx.task_key.clone())
-            .or_insert(ctx.characteristic_config.clone());
+        match subscribed_characteristics.entry(ctx.task_key.clone()) {
+            std::collections::hash_map::Entry::Occupied(_) => {
+                warn!("Already subscribed to {ctx}");
+                return Ok(());
+            }
+            std::collections::hash_map::Entry::Vacant(entry) => {
+                entry.insert(ctx.characteristic_config.clone());
+            }
+        }
 
         ctx.peripheral.subscribe(&ctx.characteristic).await?;
+
+        info!("Subscribed to {ctx}");
+
         Ok(())
     }
 }
@@ -331,13 +355,6 @@ impl PeripheralManager {
                 ));
             };
 
-        let delay_sec = delay_sec.with_context(|| {
-            format!(
-                "Delay was not set for characteristic conf {:?}",
-                ctx.characteristic_config
-            )
-        })?;
-
         loop {
             let value = ctx.peripheral.read(&ctx.characteristic).await?;
             let value = converter.convert(value)?;
@@ -348,7 +365,7 @@ impl PeripheralManager {
                 conf: Arc::clone(&ctx.characteristic_config),
             };
             self.payload_sender.send(value).await?;
-            tokio::time::sleep(delay_sec).await;
+            tokio::time::sleep(*delay_sec).await;
         }
     }
 
@@ -357,8 +374,9 @@ impl PeripheralManager {
         let mut notification_stream = ctx.peripheral.notifications().await?;
 
         while let Some(event) = notification_stream.next().await {
-            let task_key = Arc::new(ctx.task_key.with_characteristic(event.uuid));
+            let task_key = Arc::new(ctx.task_key.with_characteristic(event.service_uuid, event.uuid));
             let Some(conf) = self.get_characteristic_conf(&task_key).await else {
+                // warn!("No conf found for characteristic: {task_key}; {:?}", ctx.peripheral);
                 continue;
             };
             let CharacteristicConfig::Subscribe { converter, .. } = conf.as_ref() else {

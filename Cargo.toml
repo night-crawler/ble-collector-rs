@@ -1,10 +1,13 @@
 [package]
-name = "sensor-hub-ble-collector-rs"
+name = "ble-collector-rs"
 version = "0.1.0"
 edition = "2021"
 
+#[patch.crates-io]
+#btleplug = { path = "../btleplug" }
+
 [dependencies]
-btleplug = { version = "0.11", features = ["serde"] }
+btleplug = { git = "https://github.com/night-crawler/btleplug", branch = "add-service-uuid-value-notification", version = "0.11", features = ["serde"] }
 tokio = { version = "1.34", features = ["full"] }
 uuid = { version = "1.5", features = ["serde"] }
 rand = "0.8"

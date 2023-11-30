@@ -6,9 +6,7 @@ use btleplug::api::Characteristic;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::inner::conf::parse::{
-    CharacteristicConfig, Filter, PeripheralConfigDto, ServiceConfigDto,
-};
+use crate::inner::conf::parse::{CharacteristicConfig, Filter, PeripheralConfigDto, ServiceConfigDto};
 use crate::inner::error::{CollectorError, CollectorResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -42,21 +40,13 @@ pub(crate) struct FlatPeripheralConfig {
     pub(crate) service_map: HashMap<ServiceCharacteristicKey, Arc<CharacteristicConfig>>,
 }
 
-impl From<(Uuid, &CharacteristicConfig)> for ServiceCharacteristicKey {
-    fn from((service_uuid, char_conf): (Uuid, &CharacteristicConfig)) -> Self {
-        Self {
-            service_uuid,
-            characteristic_uuid: *char_conf.uuid(),
-        }
-    }
-}
 
 impl FlatPeripheralConfig {
     fn add_service(&mut self, service: ServiceConfigDto) -> CollectorResult<()> {
         let service_uuid = service.uuid;
         let mut unique_keys = HashSet::new();
         for char_conf_dto in service.characteristics.iter() {
-            let key = ServiceCharacteristicKey::from((service_uuid, char_conf_dto));
+            let key = ServiceCharacteristicKey { service_uuid, characteristic_uuid: *char_conf_dto.uuid() };
             if !unique_keys.insert(key.clone()) {
                 return Err(CollectorError::DuplicateCharacteristicConfiguration(key));
             }
@@ -66,10 +56,10 @@ impl FlatPeripheralConfig {
             }
         }
 
-        for mut char_conf_dto in service.characteristics {
-            char_conf_dto.update_delay(service.default_delay_sec);
-            let key = ServiceCharacteristicKey::from((service_uuid, &char_conf_dto));
-            self.service_map.insert(key, Arc::new(char_conf_dto));
+        for char_conf_dto in &service.characteristics {
+            let flat_char_conf = CharacteristicConfig::try_from((char_conf_dto, &service))?;
+            let key = ServiceCharacteristicKey { service_uuid, characteristic_uuid: *char_conf_dto.uuid() };
+            self.service_map.insert(key, Arc::new(flat_char_conf));
         }
 
         Ok(())

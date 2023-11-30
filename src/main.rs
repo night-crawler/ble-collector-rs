@@ -35,7 +35,7 @@ fn init_logging() -> CollectorResult<()> {
         })
         .level(log::LevelFilter::Info)
         .level_for("rocket", log::LevelFilter::Info)
-        .level_for("sensor_hub_ble_collector_rs", log::LevelFilter::Debug)
+        .level_for("ble_collector_rs", log::LevelFilter::Debug)
         .chain(std::io::stdout())
         .apply()?;
     Ok(())

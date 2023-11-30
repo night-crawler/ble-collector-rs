@@ -226,6 +226,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "327762f6e5a765692301e5bb513e0d9fef63be86bbc14528052b1cd3e6f03e07"
 
 [[package]]
+name = "ble-collector-rs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "bounded-integer",
+ "btleplug",
+ "chrono",
+ "clap",
+ "dashmap",
+ "fern",
+ "float-cmp",
+ "futures-util",
+ "humantime",
+ "kanal",
+ "lazy_static",
+ "log",
+ "num-bigint",
+ "num-traits",
+ "rand",
+ "regex",
+ "retainer",
+ "rocket",
+ "serde",
+ "serde_json",
+ "serde_regex",
+ "serde_with",
+ "serde_yaml",
+ "strum",
+ "strum_macros",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -273,8 +309,7 @@ dependencies = [
 [[package]]
 name = "btleplug"
 version = "0.11.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0743700186f3d4c46f91b5ac9534e0c271a5de1c3ebd7dca1b5b4216132f72a0"
+source = "git+https://github.com/night-crawler/btleplug?branch=add-service-uuid-value-notification#2ef55b81d2881caa4fd12e713f944bb9daca9ca6"
 dependencies = [
  "async-trait",
  "bitflags 2.4.1",
@@ -1679,42 +1714,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "sensor-hub-ble-collector-rs"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arc-swap",
- "bounded-integer",
- "btleplug",
- "chrono",
- "clap",
- "dashmap",
- "fern",
- "float-cmp",
- "futures-util",
- "humantime",
- "kanal",
- "lazy_static",
- "log",
- "num-bigint",
- "num-traits",
- "rand",
- "regex",
- "retainer",
- "rocket",
- "serde",
- "serde_json",
- "serde_regex",
- "serde_with",
- "serde_yaml",
- "strum",
- "strum_macros",
- "thiserror",
- "tokio",
- "uuid",
-]
 
 [[package]]
 name = "serde"

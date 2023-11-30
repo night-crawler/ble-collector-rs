@@ -130,7 +130,7 @@ impl Converter {
             _ => Ok(()),
         }
     }
-    pub(crate) fn convert(&self, value: Vec<u8>) -> Result<CharacteristicValue, ConversionError> {
+    pub(crate) fn convert(&self, mut value: Vec<u8>) -> Result<CharacteristicValue, ConversionError> {
         // assume i64 will suffice for all conversions for now
         match self {
             Converter::F32 => {
@@ -140,6 +140,7 @@ impl Converter {
             }
             Converter::Raw => Ok(CharacteristicValue::Raw(value)),
             Converter::Utf8 => {
+                value.retain(|&byte| byte != 0);
                 let result = String::from_utf8(value)?;
                 Ok(CharacteristicValue::Utf8(result))
             }

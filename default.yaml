@@ -2,41 +2,156 @@ peripherals:
   - name: 'Sensor Hub'
     device_id: !Equals 'D4:B7:67:56:DC:3B'
     services:
-      - uuid: '5c853275-723b-4754-a329-969d4bc8121e'
+      - uuid: '0000180a-0000-1000-8000-00805f9b34fb'
+        name: 'Device Information'
         default_delay_sec: 60
+        default_history_size: 10
+        characteristics:
+          - !Subscribe
+            name: 'Battery Voltage'
+            uuid: '00002b18-0000-1000-8999-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Temperature'
+            uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
+            converter: !Signed { l: 2, m: 1, d: 0, b: 0 }
+          - !Subscribe
+            name: 'Debug'
+            uuid: '00002bde-0000-1000-8000-00805f9b34fb'
+            converter: !Utf8
+          - !Poll
+            name: 'Timeout'
+            uuid: 'a0e4d2ba-0002-8000-8789-00805f9b34fb'
+            converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+      - uuid: '5c853275-723b-4754-a329-969d4bc8121e'
+        name: 'BME280'
+        default_delay_sec: 60
+        default_history_size: 10
         characteristics:
           - !Subscribe
             name: 'Temperature'
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
-            history_size: 10
             converter: !Signed { l: 2, m: 1, d: -2, b: 0 }
           - !Subscribe
             name: 'Pressure'
             uuid: '00002a6d-0000-1000-8000-00805f9b34fb'
-            history_size: 10
             converter: !Unsigned { l: 4, m: 1, d: -1, b: 0 }
           - !Subscribe
             name: 'Humidity'
             uuid: '00002a6f-0000-1000-8000-00805f9b34fb'
-            history_size: 10
             converter: !Unsigned { l: 2, m: 1, d: -2, b: 0 }
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
-            history_size: 100
             converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
           - !Poll
             name: 'Humidity Offset'
             uuid: 'a0e4a2ba-1234-4321-0001-00805f9b34fb'
-            history_size: 100
             converter: !F32
           - !Poll
             name: 'Temperature Offset'
             uuid: 'a0e4a2ba-1234-4321-0002-00805f9b34fb'
-            history_size: 100
             converter: !F32
           - !Poll
             name: 'Pressure Offset'
             uuid: 'a0e4a2ba-1234-4321-0003-00805f9b34fb'
-            history_size: 100
             converter: !F32
+      - uuid: '5c853275-823b-4754-a329-969d4bc8121e'
+        name: LIS2DH12
+        default_delay_sec: 60
+        default_history_size: 10
+        characteristics:
+          - !Subscribe
+            name: 'X-Axis Acceleration'
+            uuid: 'eaeaeaea-0000-0000-0000-00805f9b34fb'
+            converter: !F32
+          - !Subscribe
+            name: 'Y-Axis Acceleration'
+            uuid: 'eaeaeaea-0000-1000-0000-00805f9b34fb'
+            converter: !F32
+          - !Subscribe
+            name: 'Z-Axis Acceleration'
+            uuid: 'eaeaeaea-0000-2000-0000-00805f9b34fb'
+            converter: !F32
+          - !Poll
+            name: 'Timeout'
+            uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+      - uuid: '5c853275-723b-4754-a329-969d8bc8121d'
+        name: 'ADC'
+        default_delay_sec: 60
+        default_history_size: 10
+        characteristics:
+          - !Subscribe
+            name: 'Voltage 0'
+            uuid: '00002b18-0000-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Voltage 1'
+            uuid: '00002b18-0001-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Voltage 2'
+            uuid: '00002b18-0002-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Voltage 3'
+            uuid: '00002b18-0003-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Voltage 4'
+            uuid: '00002b18-0004-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Voltage 5'
+            uuid: '00002b18-0005-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Voltage 6'
+            uuid: '00002b18-0006-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Samples'
+            uuid: 'A0E4D2BA-0000-8000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+          - !Subscribe
+            name: 'Elapsed Time'
+            uuid: 'A0E4D2BA-0001-8000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 8, m: 1, d: 0, b: 0 }
+          - !Poll
+            name: 'Timeout'
+            uuid: 'a0e4d2ba-0002-8000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+      - uuid: '5c853275-923b-4754-a329-969d4bc8121e'
+        name: 'VEML6040'
+        default_delay_sec: 60
+        default_history_size: 10
+        characteristics:
+          - !Subscribe
+            name: 'Red Color Intensity'
+            uuid: 'ebbbbaea-a000-0000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+          - !Subscribe
+            name: 'Green Color Intensity'
+            uuid: 'eaeaeaea-b000-1000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+          - !Subscribe
+            name: 'Blue Color Intensity'
+            uuid: 'eaeaeaea-c000-2000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+          - !Subscribe
+            name: 'White Color Intensity'
+            uuid: 'eaeaeaea-d000-3000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+          - !Subscribe
+            name: 'Correlated Color Temperature'
+            uuid: '00002AE9-0000-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+          - !Subscribe
+            name: 'Luminous Flux'
+            uuid: '00002AFF-0000-1000-8000-00805f9b34fb'
+            converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+          - !Poll
+            name: 'Timeout'
+            uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
+            converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
