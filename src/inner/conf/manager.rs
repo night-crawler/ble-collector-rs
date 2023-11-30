@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::inner::conf::dto::peripheral::PeripheralConfigDto;
 use tokio::sync::Mutex;
 
 use crate::inner::conf::flat::FlatPeripheralConfig;
-use crate::inner::conf::parse::{Evaluate, PeripheralConfigDto};
+use crate::inner::conf::parse::Evaluate;
 use crate::inner::dto::PeripheralKey;
 use crate::inner::error::{CollectorError, CollectorResult};
 

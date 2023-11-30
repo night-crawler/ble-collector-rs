@@ -8,8 +8,8 @@ use tokio::task::JoinSet;
 
 use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::conf::cmd::CmdArgs;
+use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
 use crate::inner::conf::manager::ConfigurationManager;
-use crate::inner::conf::parse::CollectorConfigurationDto;
 use crate::inner::controller::{adapters, configurations, data};
 use crate::inner::error::CollectorResult;
 use crate::inner::peripheral_manager::CharacteristicPayload;

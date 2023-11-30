@@ -6,9 +6,9 @@ use btleplug::api::Characteristic;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::inner::conf::parse::{
-    CharacteristicConfig, Filter, PeripheralConfigDto, ServiceConfigDto,
-};
+use crate::inner::conf::dto::peripheral::PeripheralConfigDto;
+use crate::inner::conf::dto::service::ServiceConfigDto;
+use crate::inner::conf::parse::{CharacteristicConfig, Filter};
 use crate::inner::error::{CollectorError, CollectorResult};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]

@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
+use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
 use clap::Parser;
 
-use crate::inner::conf::parse::CollectorConfigurationDto;
 use crate::inner::error::CollectorError;
 
 #[derive(Parser, Debug)]

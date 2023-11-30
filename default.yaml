@@ -14,7 +14,7 @@ peripherals:
           - !Subscribe
             name: 'Temperature'
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
-            converter: !Signed { l: 2, m: 1, d: 0, b: 0 }
+            converter: !Signed { l: 2, m: 1, d: -2, b: 0 }
           - !Subscribe
             name: 'Debug'
             uuid: '00002bde-0000-1000-8000-00805f9b34fb'

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::inner::conf::dto::characteristic::CharacteristicConfigDto;
+use crate::inner::conf::dto::service::ServiceConfigDto;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -79,36 +81,6 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
     }
 }
 
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub(crate) enum CharacteristicConfigDto {
-    Subscribe {
-        name: Option<Arc<String>>,
-        uuid: Uuid,
-        history_size: Option<usize>,
-        #[serde(default)]
-        converter: Converter,
-    },
-    Poll {
-        name: Option<Arc<String>>,
-        uuid: Uuid,
-        #[serde_as(as = "Option<DurationSeconds>")]
-        delay_sec: Option<Duration>,
-        history_size: Option<usize>,
-        #[serde(default)]
-        converter: Converter,
-    },
-}
-
-impl CharacteristicConfigDto {
-    pub(crate) fn uuid(&self) -> &Uuid {
-        match self {
-            CharacteristicConfigDto::Subscribe { uuid, .. } => uuid,
-            CharacteristicConfigDto::Poll { uuid, .. } => uuid,
-        }
-    }
-}
-
 impl CharacteristicConfig {
     pub(crate) fn name(&self) -> Option<Arc<String>> {
         match self {
@@ -175,32 +147,6 @@ impl Evaluate<&str, bool> for Filter {
     }
 }
 
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub(crate) struct ServiceConfigDto {
-    pub(crate) name: Option<Arc<String>>,
-    pub(crate) uuid: Uuid,
-    #[serde_as(as = "DurationSeconds")]
-    pub(crate) default_delay_sec: Duration,
-    pub(crate) default_history_size: usize,
-    pub(crate) characteristics: Vec<CharacteristicConfigDto>,
-}
-
-#[serde_as]
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub(crate) struct PeripheralConfigDto {
-    pub(crate) name: String,
-    pub(crate) adapter: Option<Filter>,
-    pub(crate) device_id: Option<Filter>,
-    pub(crate) device_name: Option<Filter>,
-    pub(crate) services: Vec<ServiceConfigDto>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub(crate) struct CollectorConfigurationDto {
-    pub(crate) peripherals: Vec<PeripheralConfigDto>,
-}
-
 impl Evaluate<&PeripheralKey, bool> for FlatPeripheralConfig {
     fn evaluate(&self, source: &PeripheralKey) -> bool {
         let adapter_matches = self
@@ -222,49 +168,5 @@ impl Evaluate<&PeripheralKey, bool> for FlatPeripheralConfig {
         };
 
         adapter_matches && device_id_matches && name_matches
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// check serialization / deserialization
-    #[test]
-    fn test() {
-        let config = CollectorConfigurationDto {
-            peripherals: vec![PeripheralConfigDto {
-                name: "test".to_string(),
-                adapter: Some(Filter::Contains("hci0".to_string())),
-                device_id: Some(Filter::StartsWith("FA:6F".to_string())),
-                device_name: Some(Filter::EndsWith("test".to_string())),
-                services: vec![ServiceConfigDto {
-                    name: Some("test".to_string().into()),
-                    uuid: Uuid::nil(),
-                    default_delay_sec: Duration::from_secs(5),
-                    default_history_size: 100,
-                    characteristics: vec![
-                        CharacteristicConfigDto::Subscribe {
-                            history_size: Some(2),
-                            name: Some("test".to_string().into()),
-                            uuid: Uuid::nil(),
-                            converter: Default::default(),
-                        },
-                        CharacteristicConfigDto::Poll {
-                            history_size: None,
-                            name: Some("test".to_string().into()),
-                            uuid: Uuid::nil(),
-                            delay_sec: Some(Duration::from_secs(1)),
-                            converter: Default::default(),
-                        },
-                    ],
-                }],
-            }],
-        };
-
-        let serialized = serde_yaml::to_string(&config).unwrap();
-        println!("{}", serialized);
-        let deserialized: CollectorConfigurationDto = serde_yaml::from_str(&serialized).unwrap();
-        assert_eq!(config, deserialized);
     }
 }
