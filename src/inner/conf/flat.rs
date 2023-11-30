@@ -17,6 +17,16 @@ pub(crate) struct ServiceCharacteristicKey {
     pub(crate) characteristic_uuid: Uuid,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub(crate) struct FlatPeripheralConfig {
+    pub(crate) name: Arc<String>,
+    pub(crate) adapter: Option<Filter>,
+    pub(crate) device_id: Option<Filter>,
+    pub(crate) device_name: Option<Filter>,
+
+    pub(crate) service_map: HashMap<ServiceCharacteristicKey, Arc<CharacteristicConfig>>,
+}
+
 impl From<&Characteristic> for ServiceCharacteristicKey {
     fn from(value: &Characteristic) -> Self {
         Self {
@@ -30,16 +40,6 @@ impl Display for ServiceCharacteristicKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.service_uuid, self.characteristic_uuid)
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
-pub(crate) struct FlatPeripheralConfig {
-    pub(crate) name: Arc<String>,
-    pub(crate) adapter: Option<Filter>,
-    pub(crate) device_id: Option<Filter>,
-    pub(crate) device_name: Option<Filter>,
-
-    pub(crate) service_map: HashMap<ServiceCharacteristicKey, Arc<CharacteristicConfig>>,
 }
 
 impl FlatPeripheralConfig {

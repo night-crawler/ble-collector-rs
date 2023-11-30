@@ -43,11 +43,11 @@ pub(crate) enum Converter {
 impl Display for Converter {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Converter::Raw => write!(f, "Raw"),
-            Converter::Utf8 => write!(f, "Utf8"),
-            Converter::Signed { l, m, d, b } => write!(f, "Signed[{l}]({m} {d} {b})",),
-            Converter::Unsigned { l, m, d, b } => write!(f, "Unsigned[{l}]({m} {d} {b})",),
-            Converter::F32 => write!(f, "F32"),
+            Self::Raw => write!(f, "Raw"),
+            Self::Utf8 => write!(f, "Utf8"),
+            Self::Signed { l, m, d, b } => write!(f, "Signed[{l}]({m} {d} {b})",),
+            Self::Unsigned { l, m, d, b } => write!(f, "Unsigned[{l}]({m} {d} {b})",),
+            Self::F32 => write!(f, "F32"),
         }
     }
 }
@@ -66,10 +66,10 @@ impl Serialize for CharacteristicValue {
         S: Serializer,
     {
         match self {
-            CharacteristicValue::Raw(value) => serializer.serialize_bytes(value),
-            CharacteristicValue::Utf8(value) => serializer.serialize_str(value),
-            CharacteristicValue::I64(value) => serializer.serialize_i64(*value),
-            CharacteristicValue::F64(value) => serializer.serialize_f64(*value),
+            Self::Raw(value) => serializer.serialize_bytes(value),
+            Self::Utf8(value) => serializer.serialize_str(value),
+            Self::I64(value) => serializer.serialize_i64(*value),
+            Self::F64(value) => serializer.serialize_f64(*value),
         }
     }
 }
@@ -77,10 +77,10 @@ impl Serialize for CharacteristicValue {
 impl Display for CharacteristicValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            CharacteristicValue::Raw(value) => write!(f, "{:?}", value),
-            CharacteristicValue::Utf8(value) => write!(f, "{}", value),
-            CharacteristicValue::I64(value) => write!(f, "{}", value),
-            CharacteristicValue::F64(value) => write!(f, "{}", value),
+            Self::Raw(value) => write!(f, "{:?}", value),
+            Self::Utf8(value) => write!(f, "{}", value),
+            Self::I64(value) => write!(f, "{}", value),
+            Self::F64(value) => write!(f, "{}", value),
         }
     }
 }
@@ -109,7 +109,7 @@ fn compute_r(
 impl Converter {
     fn check_length(&self, value: &[u8]) -> Result<(), ConversionError> {
         match self {
-            Converter::Signed { l, .. } | Converter::Unsigned { l, .. } => {
+            Self::Signed { l, .. } | Self::Unsigned { l, .. } => {
                 if value.len() != usize::from(*l) {
                     return Err(ConversionError::LenMismatch {
                         expected: usize::from(*l),
@@ -118,7 +118,7 @@ impl Converter {
                 }
                 Ok(())
             }
-            Converter::F32 => {
+            Self::F32 => {
                 if value.len() != 4 {
                     return Err(ConversionError::LenMismatch {
                         expected: 4,
@@ -136,18 +136,18 @@ impl Converter {
     ) -> Result<CharacteristicValue, ConversionError> {
         // assume i64 will suffice for all conversions for now
         match self {
-            Converter::F32 => {
+            Self::F32 => {
                 self.check_length(&value)?;
                 let value = f32::from_le_bytes(<[u8; 4]>::try_from(value).unwrap());
                 Ok(CharacteristicValue::F64(value as f64))
             }
-            Converter::Raw => Ok(CharacteristicValue::Raw(value)),
-            Converter::Utf8 => {
+            Self::Raw => Ok(CharacteristicValue::Raw(value)),
+            Self::Utf8 => {
                 value.retain(|&byte| byte != 0);
                 let result = String::from_utf8(value)?;
                 Ok(CharacteristicValue::Utf8(result))
             }
-            &Converter::Signed { m, d, b, .. } => {
+            &Self::Signed { m, d, b, .. } => {
                 self.check_length(&value)?;
                 let value = BigInt::from_le_bytes(&value);
                 let value = if let Some(value) = value.to_i64() {
@@ -158,7 +158,7 @@ impl Converter {
 
                 Ok(compute_r(value, i8::from(m), d, b))
             }
-            &Converter::Unsigned { m, d, b, .. } => {
+            &Self::Unsigned { m, d, b, .. } => {
                 self.check_length(&value)?;
                 let value = BigUint::from_le_bytes(&value);
                 let value = if let Some(value) = value.to_i64() {
@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn test() {
-        let converter = super::Converter::Signed {
+        let converter = Converter::Signed {
             l: BoundedU8::new(2).unwrap(),
             m: BoundedI8::new(1).unwrap(),
             d: 0,

@@ -18,11 +18,6 @@ impl<E> HttpError<E> {
             status: Status::InternalServerError,
         }
     }
-
-    pub(crate) fn with_status(mut self, status: Status) -> Self {
-        self.status = status;
-        self
-    }
 }
 
 impl<E> From<E> for HttpError<E>
