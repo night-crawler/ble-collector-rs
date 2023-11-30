@@ -96,7 +96,6 @@ impl TaskKey {
     }
 }
 
-
 impl Display for ConnectionContext {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let name = self
@@ -186,7 +185,10 @@ impl PeripheralManager {
         }
 
         if let Some(result) = join_set.join_next().await {
-            info!("Discovery task for adapter {:?} has ended: {result:?}", self.adapter);
+            info!(
+                "Discovery task for adapter {:?} has ended: {result:?}",
+                self.adapter
+            );
         }
 
         Ok(())
@@ -244,11 +246,11 @@ impl PeripheralManager {
     async fn check_characteristic_is_handled(&self, task_key: &TaskKey) -> bool {
         self.poll_handle_map.lock().await.get(task_key).is_some()
             || self
-            .subscribed_characteristics
-            .lock()
-            .await
-            .get(task_key)
-            .is_some()
+                .subscribed_characteristics
+                .lock()
+                .await
+                .get(task_key)
+                .is_some()
     }
 
     async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
@@ -349,11 +351,11 @@ impl PeripheralManager {
             ref converter,
             ..
         } = ctx.characteristic_config.as_ref()
-            else {
-                return Err(CollectorError::UnexpectedCharacteristicConfiguration(
-                    ctx.characteristic_config.clone(),
-                ));
-            };
+        else {
+            return Err(CollectorError::UnexpectedCharacteristicConfiguration(
+                ctx.characteristic_config.clone(),
+            ));
+        };
 
         loop {
             let value = ctx.peripheral.read(&ctx.characteristic).await?;
@@ -374,7 +376,10 @@ impl PeripheralManager {
         let mut notification_stream = ctx.peripheral.notifications().await?;
 
         while let Some(event) = notification_stream.next().await {
-            let task_key = Arc::new(ctx.task_key.with_characteristic(event.service_uuid, event.uuid));
+            let task_key = Arc::new(
+                ctx.task_key
+                    .with_characteristic(event.service_uuid, event.uuid),
+            );
             let Some(conf) = self.get_characteristic_conf(&task_key).await else {
                 // warn!("No conf found for characteristic: {task_key}; {:?}", ctx.peripheral);
                 continue;

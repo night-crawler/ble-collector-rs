@@ -47,7 +47,7 @@ impl Display for Converter {
             Converter::Utf8 => write!(f, "Utf8"),
             Converter::Signed { l, m, d, b } => write!(f, "Signed[{l}]({m} {d} {b})",),
             Converter::Unsigned { l, m, d, b } => write!(f, "Unsigned[{l}]({m} {d} {b})",),
-            Converter::F32 => write!(f, "F32")
+            Converter::F32 => write!(f, "F32"),
         }
     }
 }
@@ -117,7 +117,7 @@ impl Converter {
                     });
                 }
                 Ok(())
-            },
+            }
             Converter::F32 => {
                 if value.len() != 4 {
                     return Err(ConversionError::LenMismatch {
@@ -126,11 +126,14 @@ impl Converter {
                     });
                 }
                 Ok(())
-            },
+            }
             _ => Ok(()),
         }
     }
-    pub(crate) fn convert(&self, mut value: Vec<u8>) -> Result<CharacteristicValue, ConversionError> {
+    pub(crate) fn convert(
+        &self,
+        mut value: Vec<u8>,
+    ) -> Result<CharacteristicValue, ConversionError> {
         // assume i64 will suffice for all conversions for now
         match self {
             Converter::F32 => {

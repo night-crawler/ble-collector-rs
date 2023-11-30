@@ -32,7 +32,6 @@ pub(crate) struct CharacteristicStorage {
     pub(crate) values: VecDeque<DataPoint>,
 }
 
-
 #[derive(Debug, Default, Serialize)]
 pub(crate) struct ServiceStorage {
     pub(crate) characteristics: DashMap<Uuid, CharacteristicStorage>,

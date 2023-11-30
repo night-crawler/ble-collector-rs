@@ -40,37 +40,44 @@ pub(crate) enum CharacteristicConfig {
 impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicConfig {
     type Error = CollectorError;
 
-    fn try_from((char_conf, service_conf): (&CharacteristicConfigDto, &ServiceConfigDto)) -> Result<Self, Self::Error> {
+    fn try_from(
+        (char_conf, service_conf): (&CharacteristicConfigDto, &ServiceConfigDto),
+    ) -> Result<Self, Self::Error> {
         let service_name = service_conf.name.clone();
         let service_uuid = service_conf.uuid;
 
         match char_conf {
-            CharacteristicConfigDto::Subscribe { name, uuid, history_size, converter } => {
-                Ok(CharacteristicConfig::Subscribe {
-                    name: name.clone(),
-                    service_name,
-                    service_uuid,
-                    uuid: *uuid,
-                    history_size: history_size.unwrap_or(service_conf.default_history_size),
-                    converter: converter.clone()
-                })
-            }
-            CharacteristicConfigDto::Poll { name, uuid, delay_sec, history_size, converter } => {
-                Ok(CharacteristicConfig::Poll {
-                    name: name.clone(),
-                    uuid: *uuid,
-                    service_name,
-                    service_uuid,
-                    delay_sec: delay_sec.unwrap_or(service_conf.default_delay_sec),
-                    history_size: history_size.unwrap_or(service_conf.default_history_size),
-                    converter: converter.clone()
-                })
-            }
+            CharacteristicConfigDto::Subscribe {
+                name,
+                uuid,
+                history_size,
+                converter,
+            } => Ok(CharacteristicConfig::Subscribe {
+                name: name.clone(),
+                service_name,
+                service_uuid,
+                uuid: *uuid,
+                history_size: history_size.unwrap_or(service_conf.default_history_size),
+                converter: converter.clone(),
+            }),
+            CharacteristicConfigDto::Poll {
+                name,
+                uuid,
+                delay_sec,
+                history_size,
+                converter,
+            } => Ok(CharacteristicConfig::Poll {
+                name: name.clone(),
+                uuid: *uuid,
+                service_name,
+                service_uuid,
+                delay_sec: delay_sec.unwrap_or(service_conf.default_delay_sec),
+                history_size: history_size.unwrap_or(service_conf.default_history_size),
+                converter: converter.clone(),
+            }),
         }
-
     }
 }
-
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -103,7 +110,6 @@ impl CharacteristicConfigDto {
 }
 
 impl CharacteristicConfig {
-
     pub(crate) fn name(&self) -> Option<Arc<String>> {
         match self {
             CharacteristicConfig::Subscribe { name, .. } => name.clone(),
