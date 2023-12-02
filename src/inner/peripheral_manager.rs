@@ -1,13 +1,15 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use btleplug::api::{BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter};
+use btleplug::api::{
+    BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter, ValueNotification,
+};
 use btleplug::platform::{Adapter, Peripheral};
 use chrono::Utc;
-use futures_util::StreamExt;
+use futures_util::{stream, StreamExt};
 use kanal::AsyncSender;
 use log::{info, warn};
 use retainer::Cache;
@@ -19,8 +21,12 @@ use crate::inner::conf::flat::{FlatPeripheralConfig, ServiceCharacteristicKey};
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::parse::CharacteristicConfig;
 use crate::inner::conv::converter::CharacteristicValue;
-use crate::inner::dto::PeripheralKey;
+use crate::inner::dto::{
+    ReadPeripheralValueCommandDto, ResultDto, WritePeripheralCommandsRequestDto,
+    WritePeripheralCommandsResponseDto, WritePeripheralValueCommandDto,
+};
 use crate::inner::error::{CollectorError, CollectorResult};
+use crate::inner::model::peripheral_key::PeripheralKey;
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Hash)]
 pub(crate) struct TaskKey {
@@ -93,6 +99,11 @@ impl TaskKey {
             characteristic_uuid,
             ..*self
         }
+    }
+
+    pub(crate) fn matches(&self, value_notification: &ValueNotification) -> bool {
+        self.service_uuid == value_notification.service_uuid
+            && self.characteristic_uuid == value_notification.uuid
     }
 }
 
@@ -372,7 +383,6 @@ impl PeripheralManager {
     }
 
     async fn block_on_notifying(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
-        info!("Subscribing to {ctx}");
         let mut notification_stream = ctx.peripheral.notifications().await?;
 
         while let Some(event) = notification_stream.next().await {
@@ -402,6 +412,168 @@ impl PeripheralManager {
     }
 }
 
+impl PeripheralManager {
+    async fn get_peripherals<I>(
+        &self,
+        peripheral_addresses: I,
+    ) -> CollectorResult<Vec<Arc<Peripheral>>>
+    where
+        I: IntoIterator<Item = BDAddr>,
+    {
+        let mut result = vec![];
+        for address in peripheral_addresses {
+            let peripheral = self
+                .get_peripheral(&address)
+                .await?
+                .with_context(|| format!("Failed to get peripheral: {:?}", address))?;
+            result.push(peripheral);
+        }
+        Ok(result)
+    }
+    pub(crate) async fn execute_write(
+        &self,
+        request: WritePeripheralCommandsRequestDto,
+    ) -> CollectorResult<WritePeripheralCommandsResponseDto> {
+        let parallelism = request.parallelism.map(|p| p.get()).unwrap_or(1);
+        let all_addresses: BTreeSet<BDAddr> = request
+            .write_commands
+            .iter()
+            .map(|write_request| write_request.peripheral_address)
+            .chain(
+                request
+                    .read_commands
+                    .iter()
+                    .map(|read_request| read_request.peripheral_address),
+            )
+            .collect();
+
+        info!("Extracted addresses: {:?}", all_addresses);
+        let peripherals = self.get_peripherals(all_addresses).await?;
+
+        let write_results: Vec<ResultDto<()>> = stream::iter(request.write_commands)
+            .map(|write_request| async move { self.write_value(write_request).await })
+            .buffered(parallelism)
+            .map(ResultDto::from)
+            .collect::<Vec<_>>()
+            .await;
+
+        let read_results: Vec<ResultDto<Vec<u8>>> = stream::iter(request.read_commands)
+            .map(|read_request| async move { self.read_value(read_request).await })
+            .buffered(parallelism)
+            .map(ResultDto::from)
+            .collect::<Vec<_>>()
+            .await;
+
+        let disconnect_results: HashMap<BDAddr, ResultDto<()>> = stream::iter(peripherals)
+            .map(|peripheral| async move { (peripheral.address(), peripheral.disconnect().await) })
+            .buffered(parallelism)
+            .map(|(address, result)| (address, ResultDto::from(result)))
+            .collect()
+            .await;
+
+        Ok(WritePeripheralCommandsResponseDto {
+            write_commands: write_results,
+            read_commands: read_results,
+            disconnect_results,
+        })
+    }
+
+    pub(crate) async fn read_value(
+        &self,
+        request: ReadPeripheralValueCommandDto,
+    ) -> CollectorResult<Vec<u8>> {
+        let task_key = TaskKey::from(&request);
+        let (peripheral, characteristic) = self.get_triple(&task_key).await?;
+
+        if !request.wait_notification {
+            let value = peripheral.read(&characteristic).await?;
+            self.disconnect_if_has_no_tasks(peripheral).await?;
+            return Ok(value);
+        }
+
+        let mut notification_stream = peripheral.notifications().await?;
+
+        let result = tokio::spawn(async move {
+            while let Some(event) = notification_stream.next().await {
+                if !task_key.matches(&event) {
+                    continue;
+                }
+                return Ok(event.value);
+            }
+            Err(CollectorError::EndOfStream)
+        });
+
+        let timeout_duration = request.timeout_sec.unwrap_or(Duration::from_secs(60));
+
+        tokio::time::timeout(timeout_duration, result).await??
+    }
+
+    pub(crate) async fn write_value(
+        &self,
+        request: WritePeripheralValueCommandDto,
+    ) -> CollectorResult<()> {
+        let task_key = TaskKey::from(&request);
+        let (peripheral, characteristic) = self.get_triple(&task_key).await?;
+
+        let result = peripheral
+            .write(&characteristic, &request.value, request.get_write_type())
+            .await;
+
+        self.disconnect_if_has_no_tasks(peripheral).await?;
+
+        result?;
+        Ok(())
+    }
+
+    async fn disconnect_if_has_no_tasks(&self, peripheral: Arc<Peripheral>) -> CollectorResult<()> {
+        let poll_handle_map = self.poll_handle_map.lock().await;
+        let subscription_map = self.subscription_map.lock().await;
+        let peripheral_address = peripheral.address();
+        if subscription_map.contains_key(&peripheral_address) {
+            return Ok(());
+        }
+        if poll_handle_map
+            .keys()
+            .any(|task_key| task_key.address == peripheral_address)
+        {
+            return Ok(());
+        }
+
+        peripheral.disconnect().await?;
+
+        Ok(())
+    }
+
+    async fn get_triple(
+        &self,
+        task_key: &TaskKey,
+    ) -> CollectorResult<(Arc<Peripheral>, Characteristic)> {
+        let peripheral = self
+            .get_peripheral(&task_key.address)
+            .await?
+            .with_context(|| format!("Failed to get peripheral: {task_key}"))?;
+
+        if !peripheral.is_connected().await? {
+            peripheral.connect().await?;
+        }
+        peripheral.discover_services().await?;
+
+        let service = peripheral
+            .services()
+            .into_iter()
+            .find(|service| service.uuid == task_key.service_uuid)
+            .with_context(|| format!("Failed to find service {task_key}"))?;
+
+        let characteristic = service
+            .characteristics
+            .into_iter()
+            .find(|characteristic| characteristic.uuid == task_key.characteristic_uuid)
+            .with_context(|| format!("Failed to find characteristic {task_key}",))?;
+
+        Ok((peripheral, characteristic))
+    }
+}
+
 async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorResult<()> {
     let mut stream = peripheral_manager.adapter.events().await?;
     while let Some(event) = stream.next().await {
@@ -428,17 +600,13 @@ async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorR
                         peripheral_key.name = props.local_name;
                     }
                 }
-                // debug!("Peripheral: {:?}", peripheral_key);
+                // TODO: throttle already processed peripherals emitting to many events
 
-                // if peripheral_manager.is_connected(&peripheral_key).await {
-                //     continue;
-                // }
                 if let Some(config) = peripheral_manager
                     .configuration_manager
                     .get_matching_config(&peripheral_key)
                     .await
                 {
-                    // info!("Found matching configuration: {:?}", config);
                     peripheral_manager
                         .clone()
                         .connect_all_matching(peripheral_key, config)

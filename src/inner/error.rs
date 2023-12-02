@@ -45,6 +45,12 @@ pub(crate) enum CollectorError {
 
     #[error("Rocket error: {0:?}")]
     RocketError(#[from] rocket::Error),
+
+    #[error("Timeout: {0:?}")]
+    TimeoutError(#[from] tokio::time::error::Elapsed),
+
+    #[error("Join Error")]
+    JoinError(#[from] tokio::task::JoinError),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

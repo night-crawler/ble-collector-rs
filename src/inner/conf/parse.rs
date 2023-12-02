@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::inner::conf::flat::FlatPeripheralConfig;
 use crate::inner::conv::converter::Converter;
-use crate::inner::dto::PeripheralKey;
 use crate::inner::error::CollectorError;
+use crate::inner::model::peripheral_key::PeripheralKey;
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]

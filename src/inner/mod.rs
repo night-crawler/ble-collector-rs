@@ -5,5 +5,6 @@ pub(crate) mod conv;
 pub(crate) mod dto;
 pub(crate) mod error;
 pub(crate) mod http_error;
+pub(crate) mod model;
 pub(crate) mod peripheral_manager;
 pub(crate) mod storage;

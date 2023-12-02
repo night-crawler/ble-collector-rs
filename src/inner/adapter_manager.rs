@@ -15,7 +15,7 @@ use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::peripheral_manager::{CharacteristicPayload, PeripheralManager};
 
 pub(crate) struct AdapterManager {
-    device_managers: Mutex<Vec<Arc<PeripheralManager>>>,
+    peripheral_managers: Mutex<Vec<Arc<PeripheralManager>>>,
     sender: AsyncSender<CharacteristicPayload>,
     configuration_manager: Arc<ConfigurationManager>,
 }
@@ -26,7 +26,7 @@ impl AdapterManager {
         sender: AsyncSender<CharacteristicPayload>,
     ) -> Self {
         Self {
-            device_managers: Default::default(),
+            peripheral_managers: Default::default(),
             sender,
             configuration_manager,
         }
@@ -42,7 +42,7 @@ impl AdapterManager {
     }
 
     async fn add_adapter(&self, adapter: Adapter) {
-        self.device_managers
+        self.peripheral_managers
             .lock()
             .await
             .push(Arc::new(PeripheralManager::new(
@@ -54,7 +54,7 @@ impl AdapterManager {
 
     pub(crate) async fn start_discovery(&self) -> CollectorResult<()> {
         let mut join_set = JoinSet::new();
-        for peripheral_manager in self.device_managers.lock().await.iter().cloned() {
+        for peripheral_manager in self.peripheral_managers.lock().await.iter().cloned() {
             join_set.spawn(async move { peripheral_manager.start_discovery().await });
         }
 
@@ -66,7 +66,7 @@ impl AdapterManager {
     }
 
     pub(crate) async fn describe_adapters(&self) -> CollectorResult<Vec<AdapterDto>> {
-        let device_managers = self.device_managers.lock().await;
+        let device_managers = self.peripheral_managers.lock().await;
 
         let peripherals_per_adapter = stream::iter(device_managers.iter())
             .map(Arc::clone)

@@ -1,13 +1,20 @@
 use std::collections::{HashMap, HashSet};
+use std::fmt::Debug;
 
 use anyhow::Context;
+use bounded_integer::BoundedUsize;
 use btleplug::api::{
-    BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service,
+    BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service, WriteType,
 };
-use btleplug::platform::{Peripheral, PeripheralId};
+use btleplug::platform::Peripheral;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
+use serde_with::DurationSeconds;
 use uuid::Uuid;
+
+use crate::inner::error::CollectorResult;
+use crate::inner::peripheral_manager::TaskKey;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AdapterDto {
@@ -127,12 +134,6 @@ impl From<Descriptor> for DescriptorDto {
 
 impl PeripheralDto {
     pub(crate) async fn from_platform(peripheral: Peripheral) -> btleplug::Result<Self> {
-        // info!("Connecting to peripheral: {:?}", peripheral.id());
-        // if let Err(err) = tokio::time::timeout(Duration::from_secs(5), peripheral.connect()).await {
-        //     warn!("Timeout connecting to peripheral {:?}: {:?}", peripheral.id(), err);
-        // } else {
-        //     info!("Connected to peripheral: {:?}", peripheral.id());
-        // }
         if let Err(err) = peripheral.discover_services().await {
             error!(
                 "Error discovering services for peripheral {:?}: {:?}",
@@ -142,11 +143,6 @@ impl PeripheralDto {
         } else {
             info!("Discovered services for peripheral: {:?}", peripheral.id());
         }
-        // if let Err(err) = tokio::time::timeout(Duration::from_secs(5), peripheral.disconnect()).await {
-        //     warn!("Timeout disconnecting from peripheral {:?}: {:?}", peripheral.id(), err);
-        // } else {
-        //     info!("Disconnected from peripheral: {:?}", peripheral.id());
-        // }
 
         let props = match peripheral.properties().await {
             Ok(props) => props,
@@ -188,33 +184,86 @@ impl TryFrom<String> for AdapterDto {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub(crate) struct PeripheralKey {
-    pub(crate) adapter_id: String,
-    pub(crate) peripheral_address: BDAddr,
-    pub(crate) name: Option<String>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) enum ResultDto<T> {
+    Ok(T),
+    Error { message: String },
 }
 
-impl TryFrom<PeripheralId> for PeripheralKey {
-    type Error = anyhow::Error;
+impl<T, E> From<Result<T, E>> for ResultDto<T>
+where
+    E: Debug,
+{
+    fn from(value: Result<T, E>) -> Self {
+        match value {
+            Ok(value) => Self::Ok(value),
+            Err(err) => Self::Error {
+                message: format!("{:?}", err),
+            },
+        }
+    }
+}
 
-    fn try_from(value: PeripheralId) -> Result<Self, Self::Error> {
-        let serialized = serde_json::to_value(value)?;
-        let deserialized: HashMap<String, String> = serde_json::from_value(serialized)?;
-        let path = deserialized.into_values().next().context("No values")?;
-        let path = path
-            .strip_prefix("/org/bluez/")
-            .context("No /org/bluez prefix")?;
-        let (adapter, address) = path.rsplit_once('/').context("No / delimiter")?;
-        let address = address.strip_prefix("dev_").context("No dev_ prefix")?;
-        let address = address.replace('_', ":");
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct WritePeripheralCommandsResponseDto {
+    pub(crate) write_commands: Vec<ResultDto<()>>,
+    pub(crate) read_commands: Vec<ResultDto<Vec<u8>>>,
+    pub(crate) disconnect_results: HashMap<BDAddr, ResultDto<()>>,
+}
 
-        let address = BDAddr::from_str_delim(&address)?;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct WritePeripheralCommandsRequestDto {
+    pub(crate) write_commands: Vec<WritePeripheralValueCommandDto>,
+    pub(crate) read_commands: Vec<ReadPeripheralValueCommandDto>,
+    pub(crate) parallelism: Option<BoundedUsize<1, 64>>,
+}
 
-        Ok(Self {
-            adapter_id: adapter.to_string(),
-            peripheral_address: address,
-            name: None,
-        })
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct WritePeripheralValueCommandDto {
+    pub(crate) peripheral_address: BDAddr,
+    pub(crate) service_uuid: Uuid,
+    pub(crate) characteristic_uuid: Uuid,
+    pub(crate) value: Vec<u8>,
+    pub(crate) wait_response: bool,
+}
+
+impl From<&WritePeripheralValueCommandDto> for TaskKey {
+    fn from(value: &WritePeripheralValueCommandDto) -> Self {
+        Self {
+            address: value.peripheral_address,
+            service_uuid: value.service_uuid,
+            characteristic_uuid: value.characteristic_uuid,
+        }
+    }
+}
+
+impl WritePeripheralValueCommandDto {
+    pub(crate) fn get_write_type(&self) -> WriteType {
+        if self.wait_response {
+            WriteType::WithResponse
+        } else {
+            WriteType::WithoutResponse
+        }
+    }
+}
+
+#[serde_as]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ReadPeripheralValueCommandDto {
+    pub(crate) peripheral_address: BDAddr,
+    pub(crate) service_uuid: Uuid,
+    pub(crate) characteristic_uuid: Uuid,
+    pub(crate) wait_notification: bool,
+    #[serde_as(as = "Option<DurationSeconds>")]
+    pub(crate) timeout_sec: Option<std::time::Duration>,
+}
+
+impl From<&ReadPeripheralValueCommandDto> for TaskKey {
+    fn from(value: &ReadPeripheralValueCommandDto) -> Self {
+        Self {
+            address: value.peripheral_address,
+            service_uuid: value.service_uuid,
+            characteristic_uuid: value.characteristic_uuid,
+        }
     }
 }
