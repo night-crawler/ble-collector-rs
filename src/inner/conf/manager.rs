@@ -6,8 +6,8 @@ use tokio::sync::Mutex;
 
 use crate::inner::conf::flat::FlatPeripheralConfig;
 use crate::inner::conf::parse::Evaluate;
-use crate::inner::dto::PeripheralKey;
 use crate::inner::error::{CollectorError, CollectorResult};
+use crate::inner::model::peripheral_key::PeripheralKey;
 
 #[derive(Default)]
 pub(crate) struct ConfigurationManager {
