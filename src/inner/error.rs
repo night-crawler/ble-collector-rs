@@ -51,6 +51,9 @@ pub(crate) enum CollectorError {
 
     #[error("Join Error")]
     JoinError(#[from] tokio::task::JoinError),
+
+    #[error("Adapter `{0}` not found")]
+    AdapterNotFound(String),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

@@ -6,9 +6,18 @@ use rocket::http::{Header, Status};
 use rocket::response::Responder;
 use rocket::{Request, Response};
 
+use crate::inner::dto::Envelope;
+use crate::inner::error::CollectorError;
+
 pub(crate) struct HttpError<E> {
     error: E,
     status: Status,
+}
+
+impl<E> HttpError<E> {
+    pub(crate) fn with_status(self, status: Status) -> HttpError<E> {
+        Self { status, ..self }
+    }
 }
 
 impl<E> HttpError<E> {
@@ -50,3 +59,6 @@ where
 }
 
 pub(crate) type JsonResult<T, E> = Result<rocket::serde::json::Json<T>, HttpError<E>>;
+pub(crate) type WrappedJsonResult<T, E> =
+    Result<rocket::serde::json::Json<Envelope<T>>, HttpError<E>>;
+pub(crate) type ApiResult<T> = WrappedJsonResult<T, CollectorError>;

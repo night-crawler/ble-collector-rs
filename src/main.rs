@@ -10,7 +10,10 @@ use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::conf::cmd::CmdArgs;
 use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
 use crate::inner::conf::manager::ConfigurationManager;
-use crate::inner::controller::{adapters, configurations, data};
+use crate::inner::controller::{
+    describe_adapters, get_collector_data, list_adapters, list_configurations,
+    read_write_characteristic,
+};
 use crate::inner::error::CollectorResult;
 use crate::inner::peripheral_manager::CharacteristicPayload;
 use crate::inner::storage::Storage;
@@ -39,12 +42,6 @@ fn init_logging() -> CollectorResult<()> {
         .chain(std::io::stdout())
         .apply()?;
     Ok(())
-}
-
-pub(crate) struct CollectorState {
-    pub(crate) configuration_manager: Arc<ConfigurationManager>,
-    pub(crate) adapter_manager: Arc<AdapterManager>,
-    pub(crate) storage: Arc<Storage>,
 }
 
 #[tokio::main]
@@ -88,16 +85,21 @@ async fn main() -> CollectorResult<()> {
         });
     }
 
-    let collector_state = CollectorState {
-        configuration_manager,
-        adapter_manager,
-        storage,
-    };
-
     join_set.spawn(async move {
         rocket::build()
-            .manage(collector_state)
-            .mount("/ble", routes![adapters, configurations, data])
+            .manage(configuration_manager)
+            .manage(adapter_manager)
+            .manage(storage)
+            .mount(
+                "/ble",
+                routes![
+                    describe_adapters,
+                    list_configurations,
+                    get_collector_data,
+                    list_adapters,
+                    read_write_characteristic
+                ],
+            )
             .launch()
             .await?;
         Ok(())

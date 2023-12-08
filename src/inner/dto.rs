@@ -9,17 +9,46 @@ use btleplug::api::{
 use btleplug::platform::Peripheral;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
+use serde_with::{DurationMilliSeconds, serde_as};
 use serde_with::DurationSeconds;
 use uuid::Uuid;
 
-use crate::inner::error::CollectorResult;
 use crate::inner::peripheral_manager::TaskKey;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct AdapterDto {
+pub(crate) struct Envelope<T> {
+    pub(crate) data: T,
+}
+
+impl<T> From<T> for Envelope<T> {
+    fn from(data: T) -> Self {
+        Self { data }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct AdapterInfoDto {
     pub(crate) id: String,
     pub(crate) modalias: String,
+}
+
+impl TryFrom<String> for AdapterInfoDto {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let mut pair = value.split_whitespace();
+        let id = pair.next().context("No id")?.to_string();
+        let modalias = pair.next().context("No modalias")?.trim();
+        let modalias = modalias.strip_prefix('(').unwrap_or(modalias);
+        let modalias = modalias.strip_suffix(')').unwrap_or(modalias);
+        let modalias = modalias.to_string();
+        Ok(Self { id, modalias })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct AdapterDto {
+    pub(crate) adapter_info: AdapterInfoDto,
     pub(crate) peripherals: Vec<PeripheralDto>,
 }
 
@@ -170,15 +199,9 @@ impl TryFrom<String> for AdapterDto {
     type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let mut pair = value.split_whitespace();
-        let id = pair.next().context("No id")?.to_string();
-        let modalias = pair.next().context("No modalias")?.trim();
-        let modalias = modalias.strip_prefix('(').unwrap_or(modalias);
-        let modalias = modalias.strip_suffix(')').unwrap_or(modalias);
-        let modalias = modalias.to_string();
+        let adapter_info = AdapterInfoDto::try_from(value)?;
         Ok(Self {
-            id,
-            modalias,
+            adapter_info,
             peripherals: vec![],
         })
     }
@@ -205,14 +228,13 @@ where
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct WritePeripheralCommandsResponseDto {
+pub(crate) struct PeripheralIoResponseDto {
     pub(crate) write_commands: Vec<ResultDto<()>>,
     pub(crate) read_commands: Vec<ResultDto<Vec<u8>>>,
-    pub(crate) disconnect_results: HashMap<BDAddr, ResultDto<()>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct WritePeripheralCommandsRequestDto {
+pub(crate) struct PeripheralIoRequestDto {
     pub(crate) write_commands: Vec<WritePeripheralValueCommandDto>,
     pub(crate) read_commands: Vec<ReadPeripheralValueCommandDto>,
     pub(crate) parallelism: Option<BoundedUsize<1, 64>>,
@@ -254,8 +276,8 @@ pub(crate) struct ReadPeripheralValueCommandDto {
     pub(crate) service_uuid: Uuid,
     pub(crate) characteristic_uuid: Uuid,
     pub(crate) wait_notification: bool,
-    #[serde_as(as = "Option<DurationSeconds>")]
-    pub(crate) timeout_sec: Option<std::time::Duration>,
+    #[serde_as(as = "Option<DurationMilliSeconds>")]
+    pub(crate) timeout_ms: Option<std::time::Duration>,
 }
 
 impl From<&ReadPeripheralValueCommandDto> for TaskKey {
@@ -265,5 +287,24 @@ impl From<&ReadPeripheralValueCommandDto> for TaskKey {
             service_uuid: value.service_uuid,
             characteristic_uuid: value.characteristic_uuid,
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serialize() {
+        let write_command = WritePeripheralValueCommandDto {
+            peripheral_address: Default::default(),
+            service_uuid: Default::default(),
+            characteristic_uuid: Default::default(),
+            value: vec![1, 117, 255],
+            wait_response: false,
+        };
+        let q = serde_json::ser::to_string(&write_command).unwrap();
+        println!("{}", q);
     }
 }

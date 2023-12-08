@@ -22,8 +22,8 @@ use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::parse::CharacteristicConfig;
 use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::dto::{
-    ReadPeripheralValueCommandDto, ResultDto, WritePeripheralCommandsRequestDto,
-    WritePeripheralCommandsResponseDto, WritePeripheralValueCommandDto,
+    PeripheralIoRequestDto, ReadPeripheralValueCommandDto, ResultDto,
+    PeripheralIoResponseDto, WritePeripheralValueCommandDto,
 };
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::model::peripheral_key::PeripheralKey;
@@ -432,8 +432,8 @@ impl PeripheralManager {
     }
     pub(crate) async fn execute_write(
         &self,
-        request: WritePeripheralCommandsRequestDto,
-    ) -> CollectorResult<WritePeripheralCommandsResponseDto> {
+        request: PeripheralIoRequestDto,
+    ) -> CollectorResult<PeripheralIoResponseDto> {
         let parallelism = request.parallelism.map(|p| p.get()).unwrap_or(1);
         let all_addresses: BTreeSet<BDAddr> = request
             .write_commands
@@ -448,7 +448,6 @@ impl PeripheralManager {
             .collect();
 
         info!("Extracted addresses: {:?}", all_addresses);
-        let peripherals = self.get_peripherals(all_addresses).await?;
 
         let write_results: Vec<ResultDto<()>> = stream::iter(request.write_commands)
             .map(|write_request| async move { self.write_value(write_request).await })
@@ -464,17 +463,10 @@ impl PeripheralManager {
             .collect::<Vec<_>>()
             .await;
 
-        let disconnect_results: HashMap<BDAddr, ResultDto<()>> = stream::iter(peripherals)
-            .map(|peripheral| async move { (peripheral.address(), peripheral.disconnect().await) })
-            .buffered(parallelism)
-            .map(|(address, result)| (address, ResultDto::from(result)))
-            .collect()
-            .await;
 
-        Ok(WritePeripheralCommandsResponseDto {
+        Ok(PeripheralIoResponseDto {
             write_commands: write_results,
             read_commands: read_results,
-            disconnect_results,
         })
     }
 
@@ -483,7 +475,7 @@ impl PeripheralManager {
         request: ReadPeripheralValueCommandDto,
     ) -> CollectorResult<Vec<u8>> {
         let task_key = TaskKey::from(&request);
-        let (peripheral, characteristic) = self.get_triple(&task_key).await?;
+        let (peripheral, characteristic) = self.get_peripheral_characteristic(&task_key).await?;
 
         if !request.wait_notification {
             let value = peripheral.read(&characteristic).await?;
@@ -491,8 +483,8 @@ impl PeripheralManager {
             return Ok(value);
         }
 
+        peripheral.subscribe(&characteristic).await?;
         let mut notification_stream = peripheral.notifications().await?;
-
         let result = tokio::spawn(async move {
             while let Some(event) = notification_stream.next().await {
                 if !task_key.matches(&event) {
@@ -503,9 +495,11 @@ impl PeripheralManager {
             Err(CollectorError::EndOfStream)
         });
 
-        let timeout_duration = request.timeout_sec.unwrap_or(Duration::from_secs(60));
+        let timeout_duration = request.timeout_ms.unwrap_or(Duration::from_secs(60));
 
-        tokio::time::timeout(timeout_duration, result).await??
+        let result = tokio::time::timeout(timeout_duration, result).await??;
+        let _ = self.disconnect_if_has_no_tasks(peripheral).await;
+        result
     }
 
     pub(crate) async fn write_value(
@@ -513,7 +507,7 @@ impl PeripheralManager {
         request: WritePeripheralValueCommandDto,
     ) -> CollectorResult<()> {
         let task_key = TaskKey::from(&request);
-        let (peripheral, characteristic) = self.get_triple(&task_key).await?;
+        let (peripheral, characteristic) = self.get_peripheral_characteristic(&task_key).await?;
 
         let result = peripheral
             .write(&characteristic, &request.value, request.get_write_type())
@@ -544,7 +538,7 @@ impl PeripheralManager {
         Ok(())
     }
 
-    async fn get_triple(
+    async fn get_peripheral_characteristic(
         &self,
         task_key: &TaskKey,
     ) -> CollectorResult<(Arc<Peripheral>, Characteristic)> {
@@ -554,15 +548,17 @@ impl PeripheralManager {
             .with_context(|| format!("Failed to get peripheral: {task_key}"))?;
 
         if !peripheral.is_connected().await? {
+            info!("Connecting to {task_key}");
             peripheral.connect().await?;
         }
-        peripheral.discover_services().await?;
 
+        peripheral.discover_services().await?;
         let service = peripheral
             .services()
             .into_iter()
             .find(|service| service.uuid == task_key.service_uuid)
             .with_context(|| format!("Failed to find service {task_key}"))?;
+
 
         let characteristic = service
             .characteristics
