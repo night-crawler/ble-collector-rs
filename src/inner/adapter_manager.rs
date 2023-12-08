@@ -10,7 +10,7 @@ use log::{info, warn};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
-use crate::inner::dto::{AdapterDto, PeripheralDto};
+use crate::inner::dto::{AdapterDto, AdapterInfoDto, PeripheralDto};
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::peripheral_manager::{CharacteristicPayload, PeripheralManager};
 
@@ -52,6 +52,23 @@ impl AdapterManager {
             )));
     }
 
+    pub(crate) async fn get_peripheral_manager(
+        &self,
+        adapter_id: &str,
+    ) -> CollectorResult<Option<Arc<PeripheralManager>>> {
+        let managers = self.peripheral_managers.lock().await;
+
+        for manager in managers.iter() {
+            let adapter_info = manager.adapter.adapter_info().await?;
+            let adapter_info = AdapterInfoDto::try_from(adapter_info)?;
+            if adapter_info.id == adapter_id {
+                return Ok(Some(Arc::clone(manager)));
+            }
+        }
+
+        Ok(None)
+    }
+
     pub(crate) async fn start_discovery(&self) -> CollectorResult<()> {
         let mut join_set = JoinSet::new();
         for peripheral_manager in self.peripheral_managers.lock().await.iter().cloned() {
@@ -63,6 +80,29 @@ impl AdapterManager {
         }
         // TODO: restart discovery and recreate everything if we've reached this point
         Ok(())
+    }
+
+    pub(crate) async fn list_adapters(&self) -> CollectorResult<Vec<AdapterInfoDto>> {
+        let managers = self.peripheral_managers.lock().await;
+
+        let infos = stream::iter(managers.iter())
+            .map(Arc::clone)
+            .map(|adapter_service_manager| async move {
+                adapter_service_manager.adapter.adapter_info().await
+            })
+            .buffered(4)
+            .collect::<Vec<_>>()
+            .await;
+
+        let mut adapters = vec![];
+
+        for info in infos {
+            let info = info?;
+            let adapter_info = AdapterInfoDto::try_from(info)?;
+            adapters.push(adapter_info);
+        }
+
+        Ok(adapters)
     }
 
     pub(crate) async fn describe_adapters(&self) -> CollectorResult<Vec<AdapterDto>> {
@@ -114,7 +154,10 @@ impl AdapterManager {
 
         for dto in intermediate_result {
             let dto = dto.lock().await;
-            if result.iter().any(|existing| existing.id == dto.id) {
+            if result
+                .iter()
+                .any(|existing| existing.adapter_info.id == dto.adapter_info.id)
+            {
                 continue;
             }
             let mut dto = dto.clone();

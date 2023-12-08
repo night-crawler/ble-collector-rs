@@ -1,6 +1,6 @@
 peripherals:
   - name: 'Sensor Hub'
-    device_id: !Equals 'D4:B7:67:56:DC:3B'
+    device_id: !Equals 'FA:6F:EC:EE:4B:36'
     services:
       - uuid: '0000180a-0000-1000-8000-00805f9b34fb'
         name: 'Device Information'

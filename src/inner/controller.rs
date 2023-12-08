@@ -1,51 +1,65 @@
 use std::sync::Arc;
 
-use crate::CollectorState;
+use rocket::http::Status;
 use rocket::{get, post};
 
+use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::conf::flat::FlatPeripheralConfig;
-use crate::inner::dto::{AdapterDto, WritePeripheralCommandsRequestDto};
+use crate::inner::conf::manager::ConfigurationManager;
+use crate::inner::dto::{
+    AdapterDto, AdapterInfoDto, Envelope, PeripheralIoRequestDto,
+    PeripheralIoResponseDto,
+};
 use crate::inner::error::CollectorError;
-use crate::inner::http_error::JsonResult;
+use crate::inner::http_error::{ApiResult, HttpError};
 use crate::inner::storage::Storage;
 
+#[get("/adapters/describe")]
+pub(crate) async fn describe_adapters(
+    adapter_manager: &rocket::State<Arc<AdapterManager>>,
+) -> ApiResult<Vec<AdapterDto>> {
+    let wrapped = Envelope::from(adapter_manager.describe_adapters().await?);
+    Ok(wrapped.into())
+}
+
 #[get("/adapters")]
-pub(crate) async fn adapters(
-    collector_state: &rocket::State<CollectorState>,
-) -> JsonResult<Vec<AdapterDto>, CollectorError> {
-    Ok(collector_state
-        .adapter_manager
-        .describe_adapters()
-        .await?
-        .into())
+pub(crate) async fn list_adapters(
+    adapter_manager: &rocket::State<Arc<AdapterManager>>,
+) -> ApiResult<Vec<AdapterInfoDto>> {
+    let wrapped = Envelope::from(adapter_manager.list_adapters().await?);
+    Ok(wrapped.into())
 }
 
 #[get("/configurations")]
-pub(crate) async fn configurations(
-    collector_state: &rocket::State<CollectorState>,
-) -> JsonResult<Vec<Arc<FlatPeripheralConfig>>, CollectorError> {
-    Ok(collector_state
-        .configuration_manager
-        .list_peripheral_configs()
-        .await
-        .into())
+pub(crate) async fn list_configurations(
+    configuration_manager: &rocket::State<Arc<ConfigurationManager>>,
+) -> ApiResult<Vec<Arc<FlatPeripheralConfig>>> {
+    let wrapped = Envelope::from(configuration_manager.list_peripheral_configs().await);
+    Ok(wrapped.into())
 }
 
 #[get("/data")]
-pub(crate) async fn data(
-    collector_state: &rocket::State<CollectorState>,
-) -> JsonResult<Arc<Storage>, CollectorError> {
-    Ok(collector_state.storage.clone().into())
+pub(crate) async fn get_collector_data(
+    storage: &rocket::State<Arc<Storage>>,
+) -> ApiResult<Arc<Storage>> {
+    Ok(Envelope::from(Arc::clone(storage)).into())
 }
 
-#[post("/rw", format = "json", data = "<request>")]
-pub(crate) async fn rw(
-    collector_state: &rocket::State<CollectorState>,
-    request: rocket::serde::json::Json<WritePeripheralCommandsRequestDto>,
-) -> JsonResult<(), CollectorError> {
-    // collector_state
-    //     .per
-    //     .write_peripheral_commands(request.into_inner())
-    //     .await?;
-    todo!()
+#[post("/adapters/<adapter_id>/io", format = "json", data = "<request>")]
+pub(crate) async fn read_write_characteristic(
+    adapter_id: &str,
+    request: rocket::serde::json::Json<PeripheralIoRequestDto>,
+    adapter_manager: &rocket::State<Arc<AdapterManager>>,
+) -> ApiResult<PeripheralIoResponseDto> {
+    let Some(adapter) = adapter_manager.get_peripheral_manager(adapter_id).await? else {
+        return Err(
+            HttpError::new(CollectorError::AdapterNotFound(adapter_id.to_string()))
+                .with_status(Status::NotFound),
+        );
+    };
+
+    let request = request.into_inner();
+
+    let result = adapter.execute_write(request).await?;
+    Ok(Envelope::from(result).into())
 }
