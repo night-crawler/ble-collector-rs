@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fmt::Debug;
 
 use anyhow::Context;
@@ -9,11 +9,10 @@ use btleplug::api::{
 use btleplug::platform::Peripheral;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
-use serde_with::{DurationMilliSeconds, serde_as};
-use serde_with::DurationSeconds;
+use serde_with::{serde_as, DurationMilliSeconds};
 use uuid::Uuid;
 
-use crate::inner::peripheral_manager::TaskKey;
+use crate::inner::peripheral_manager::Fqcn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Envelope<T> {
@@ -227,84 +226,145 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
 pub(crate) struct PeripheralIoResponseDto {
-    pub(crate) write_commands: Vec<ResultDto<()>>,
-    pub(crate) read_commands: Vec<ResultDto<Vec<u8>>>,
+    pub(crate) batch_responses: Vec<PeripheralIoBatchResponseDto>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct PeripheralIoBatchResponseDto {
+    pub(crate) command_responses: Vec<Option<ResultDto<Vec<u8>>>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PeripheralIoRequestDto {
-    pub(crate) write_commands: Vec<WritePeripheralValueCommandDto>,
-    pub(crate) read_commands: Vec<ReadPeripheralValueCommandDto>,
+    pub(crate) batches: Vec<PeripheralIoBatchRequestDto>,
     pub(crate) parallelism: Option<BoundedUsize<1, 64>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct WritePeripheralValueCommandDto {
-    pub(crate) peripheral_address: BDAddr,
-    pub(crate) service_uuid: Uuid,
-    pub(crate) characteristic_uuid: Uuid,
-    pub(crate) value: Vec<u8>,
-    pub(crate) wait_response: bool,
-}
-
-impl From<&WritePeripheralValueCommandDto> for TaskKey {
-    fn from(value: &WritePeripheralValueCommandDto) -> Self {
-        Self {
-            address: value.peripheral_address,
-            service_uuid: value.service_uuid,
-            characteristic_uuid: value.characteristic_uuid,
-        }
-    }
-}
-
-impl WritePeripheralValueCommandDto {
-    pub(crate) fn get_write_type(&self) -> WriteType {
-        if self.wait_response {
-            WriteType::WithResponse
-        } else {
-            WriteType::WithoutResponse
-        }
-    }
+pub(crate) struct PeripheralIoBatchRequestDto {
+    pub(crate) commands: Vec<IoCommand>,
+    pub(crate) parallelism: Option<BoundedUsize<1, 64>>,
 }
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct ReadPeripheralValueCommandDto {
-    pub(crate) peripheral_address: BDAddr,
-    pub(crate) service_uuid: Uuid,
-    pub(crate) characteristic_uuid: Uuid,
-    pub(crate) wait_notification: bool,
-    #[serde_as(as = "Option<DurationMilliSeconds>")]
-    pub(crate) timeout_ms: Option<std::time::Duration>,
+pub(crate) enum IoCommand {
+    Write {
+        fqcn: Fqcn,
+        value: Vec<u8>,
+        wait_response: bool,
+        timeout_ms: Option<std::time::Duration>,
+    },
+    Read {
+        fqcn: Fqcn,
+        wait_notification: bool,
+        #[serde_as(as = "Option<DurationMilliSeconds>")]
+        timeout_ms: Option<std::time::Duration>,
+    },
 }
 
-impl From<&ReadPeripheralValueCommandDto> for TaskKey {
-    fn from(value: &ReadPeripheralValueCommandDto) -> Self {
-        Self {
-            address: value.peripheral_address,
-            service_uuid: value.service_uuid,
-            characteristic_uuid: value.characteristic_uuid,
+impl IoCommand {
+    pub(crate) fn get_timeout(&self) -> Option<std::time::Duration> {
+        match self {
+            IoCommand::Write { timeout_ms, .. } => timeout_ms.clone(),
+            IoCommand::Read { timeout_ms, .. } => timeout_ms.clone(),
+        }
+    }
+    pub(crate) fn get_write_type(&self) -> WriteType {
+        match self {
+            IoCommand::Write { wait_response, .. } => {
+                if *wait_response {
+                    WriteType::WithResponse
+                } else {
+                    WriteType::WithoutResponse
+                }
+            }
+            IoCommand::Read { .. } => WriteType::WithoutResponse,
         }
     }
 }
 
-
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use btleplug::api::BDAddr;
+    use uuid::Uuid;
+
+    use crate::inner::peripheral_manager::Fqcn;
+
     use super::*;
 
     #[test]
-    fn test_serialize() {
-        let write_command = WritePeripheralValueCommandDto {
-            peripheral_address: Default::default(),
-            service_uuid: Default::default(),
-            characteristic_uuid: Default::default(),
-            value: vec![1, 117, 255],
-            wait_response: false,
+    fn test_serialize_io_request() {
+        let request = PeripheralIoRequestDto {
+            batches: vec![PeripheralIoBatchRequestDto {
+                commands: vec![
+                    IoCommand::Write {
+                        fqcn: Fqcn {
+                            peripheral_address: BDAddr::from_str("00:00:00:00:00:00").unwrap(),
+                            service_uuid: Uuid::from_str("0000180f-0000-1000-8000-00805f9b34fb")
+                                .unwrap(),
+                            characteristic_uuid: Uuid::from_str(
+                                "00002a19-0000-1000-8000-00805f9b34fb",
+                            )
+                            .unwrap(),
+                        },
+                        value: vec![1, 2, 3],
+                        wait_response: true,
+                    },
+                    IoCommand::Read {
+                        fqcn: Fqcn {
+                            peripheral_address: BDAddr::from_str("00:00:00:00:00:00").unwrap(),
+                            service_uuid: Uuid::from_str("0000180f-0000-1000-8000-00805f9b34fb")
+                                .unwrap(),
+                            characteristic_uuid: Uuid::from_str(
+                                "00002a19-0000-1000-8000-00805f9b34fb",
+                            )
+                            .unwrap(),
+                        },
+                        wait_notification: true,
+                        timeout_ms: Some(std::time::Duration::from_secs(1)),
+                    },
+                ],
+                parallelism: Some(BoundedUsize::new(1).unwrap()),
+            }],
+            parallelism: Some(BoundedUsize::new(1).unwrap()),
         };
-        let q = serde_json::ser::to_string(&write_command).unwrap();
-        println!("{}", q);
+
+        let serialized = serde_json::to_string_pretty(&request).unwrap();
+        // println!("{}", serialized);
+
+        let q = r#"
+{"batches": [{"commands": [{"Write": {"fqcn": {"peripheral_address": "FA:6F:EC:EE:4B:36", "service_uuid": "ac866789-aaaa-eeee-a329-969d4bc8621e", "characteristic_uuid": "0000a004-0000-1000-8000-00805f9b34fb"}, "value": [2], "wait_response": true}}, {"Read": {"fqcn": {"peripheral_address": "FA:6F:EC:EE:4B:36", "service_uuid": "ac866789-aaaa-eeee-a329-969d4bc8621e", "characteristic_uuid": "0000a006-0000-1000-8000-00805f9b34fb"}, "wait_notification": true, "timeout_ms": 2000}}], "parallelism": 32}], "parallelism": 4}
+        "#;
+
+        let q = "{\"batches\": [{\"commands\": [{\"Write\": {\"fqcn\": {\"peripheral_address\": \"FA:6F:EC:EE:4B:36\", \"service_uuid\": \"ac866789-aaaa-eeee-a329-969d4bc8621e\", \"characteristic_uuid\": \"0000a004-0000-1000-8000-00805f9b34fb\"}, \"value\": [2], \"wait_response\": true}, \"Read\": null}, {\"Write\": null, \"Read\": {\"fqcn\": {\"peripheral_address\": \"FA:6F:EC:EE:4B:36\", \"service_uuid\": \"ac866789-aaaa-eeee-a329-969d4bc8621e\", \"characteristic_uuid\": \"0000a006-0000-1000-8000-00805f9b34fb\"}, \"wait_notification\": true, \"timeout_ms\": 2000}}], \"parallelism\": 32}], \"parallelism\": 4}";
+
+        if let Err(err) = serde_json::from_str::<PeripheralIoRequestDto>(q) {
+            println!("{:?}", err);
+        } else {
+            println!("!!!")
+        }
+    }
+
+    #[test]
+    fn test_serialize_response() {
+        let response = PeripheralIoResponseDto {
+            batch_responses: vec![PeripheralIoBatchResponseDto {
+                command_responses: vec![
+                    Some(ResultDto::Ok(vec![1, 2, 3])),
+                    Some(ResultDto::Error {
+                        message: "Error".to_string(),
+                    }),
+                ],
+            }],
+        };
+
+        let serialized = serde_json::to_string(&response).unwrap();
+
+        println!("{}", serialized);
     }
 }

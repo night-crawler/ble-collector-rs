@@ -4,11 +4,11 @@ use rocket::http::Status;
 use rocket::{get, post};
 
 use crate::inner::adapter_manager::AdapterManager;
+use crate::inner::batch_executor::execute_batches;
 use crate::inner::conf::flat::FlatPeripheralConfig;
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::dto::{
-    AdapterDto, AdapterInfoDto, Envelope, PeripheralIoRequestDto,
-    PeripheralIoResponseDto,
+    AdapterDto, AdapterInfoDto, Envelope, PeripheralIoRequestDto, PeripheralIoResponseDto,
 };
 use crate::inner::error::CollectorError;
 use crate::inner::http_error::{ApiResult, HttpError};
@@ -51,15 +51,12 @@ pub(crate) async fn read_write_characteristic(
     request: rocket::serde::json::Json<PeripheralIoRequestDto>,
     adapter_manager: &rocket::State<Arc<AdapterManager>>,
 ) -> ApiResult<PeripheralIoResponseDto> {
-    let Some(adapter) = adapter_manager.get_peripheral_manager(adapter_id).await? else {
+    let Some(peripheral_manager) = adapter_manager.get_peripheral_manager(adapter_id).await? else {
         return Err(
             HttpError::new(CollectorError::AdapterNotFound(adapter_id.to_string()))
                 .with_status(Status::NotFound),
         );
     };
-
-    let request = request.into_inner();
-
-    let result = adapter.execute_write(request).await?;
-    Ok(Envelope::from(result).into())
+    let response = execute_batches(peripheral_manager, request.into_inner()).await;
+    Ok(Envelope::from(response).into())
 }

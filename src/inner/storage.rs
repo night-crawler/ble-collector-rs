@@ -58,21 +58,21 @@ impl Storage {
     pub(crate) fn process(&self, payload: CharacteristicPayload) {
         let mut peripheral = self
             .peripherals
-            .entry(payload.task_key.address)
+            .entry(payload.fqcn.peripheral_address)
             .or_default();
 
         peripheral.updated_at = payload.created_at;
 
         let mut service = peripheral
             .services
-            .entry(payload.task_key.service_uuid)
+            .entry(payload.fqcn.service_uuid)
             .or_default();
 
         service.updated_at = payload.created_at;
 
         let mut char_storage = service
             .characteristics
-            .entry(payload.task_key.characteristic_uuid)
+            .entry(payload.fqcn.characteristic_uuid)
             .or_default();
 
         char_storage.name = payload.conf.name();
