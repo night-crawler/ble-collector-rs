@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,10 +9,12 @@ use btleplug::api::{
 };
 use btleplug::platform::{Adapter, Peripheral};
 use chrono::Utc;
-use futures_util::{stream, StreamExt};
+use futures_util::StreamExt;
 use kanal::AsyncSender;
 use log::{info, warn};
 use retainer::Cache;
+use rocket::serde::Serialize;
+use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio::task::{JoinHandle, JoinSet};
 use uuid::Uuid;
@@ -21,26 +23,22 @@ use crate::inner::conf::flat::{FlatPeripheralConfig, ServiceCharacteristicKey};
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::parse::CharacteristicConfig;
 use crate::inner::conv::converter::CharacteristicValue;
-use crate::inner::dto::{
-    PeripheralIoRequestDto, ReadPeripheralValueCommandDto, ResultDto,
-    PeripheralIoResponseDto, WritePeripheralValueCommandDto,
-};
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::model::peripheral_key::PeripheralKey;
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Hash)]
-pub(crate) struct TaskKey {
-    pub(crate) address: BDAddr,
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Hash, Serialize, Deserialize)]
+pub(crate) struct Fqcn {
+    pub(crate) peripheral_address: BDAddr,
     pub(crate) service_uuid: Uuid,
     pub(crate) characteristic_uuid: Uuid,
 }
 
-impl Display for TaskKey {
+impl Display for Fqcn {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{}::{}:{}",
-            self.address, self.service_uuid, self.characteristic_uuid
+            self.peripheral_address, self.service_uuid, self.characteristic_uuid
         )
     }
 }
@@ -49,23 +47,23 @@ impl Display for TaskKey {
 pub(crate) struct CharacteristicPayload {
     pub(crate) created_at: chrono::DateTime<Utc>,
     pub(crate) value: CharacteristicValue,
-    pub(crate) task_key: Arc<TaskKey>,
+    pub(crate) fqcn: Arc<Fqcn>,
     pub(crate) conf: Arc<CharacteristicConfig>,
 }
 
 impl Display for CharacteristicPayload {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let parts = vec![
-            self.task_key.address.to_string(),
+            self.fqcn.peripheral_address.to_string(),
             if let Some(name) = self.conf.service_name() {
                 name.to_string()
             } else {
-                self.task_key.service_uuid.to_string()
+                self.fqcn.service_uuid.to_string()
             },
             if let Some(name) = self.conf.name() {
                 name.to_string()
             } else {
-                self.task_key.characteristic_uuid.to_string()
+                self.fqcn.characteristic_uuid.to_string()
             },
         ];
 
@@ -77,9 +75,9 @@ pub(crate) struct PeripheralManager {
     pub(crate) adapter: Arc<Adapter>,
     peripheral_cache: Arc<Cache<BDAddr, Arc<Peripheral>>>,
     cache_monitor: JoinHandle<()>,
-    poll_handle_map: Arc<Mutex<HashMap<Arc<TaskKey>, JoinHandle<()>>>>,
+    poll_handle_map: Arc<Mutex<HashMap<Arc<Fqcn>, JoinHandle<()>>>>,
     subscription_map: Arc<Mutex<HashMap<BDAddr, JoinHandle<()>>>>,
-    subscribed_characteristics: Arc<Mutex<HashMap<Arc<TaskKey>, Arc<CharacteristicConfig>>>>,
+    subscribed_characteristics: Arc<Mutex<HashMap<Arc<Fqcn>, Arc<CharacteristicConfig>>>>,
     payload_sender: AsyncSender<CharacteristicPayload>,
     configuration_manager: Arc<ConfigurationManager>,
 }
@@ -88,13 +86,13 @@ struct ConnectionContext {
     peripheral: Arc<Peripheral>,
     characteristic: Characteristic,
     characteristic_config: Arc<CharacteristicConfig>,
-    task_key: Arc<TaskKey>,
+    fqcn: Arc<Fqcn>,
     peripheral_config: Arc<FlatPeripheralConfig>,
 }
 
-impl TaskKey {
+impl Fqcn {
     fn with_characteristic(&self, service_uuid: Uuid, characteristic_uuid: Uuid) -> Self {
-        TaskKey {
+        Fqcn {
             service_uuid,
             characteristic_uuid,
             ..*self
@@ -230,13 +228,13 @@ impl PeripheralManager {
                 continue;
             };
 
-            let task_key = TaskKey {
-                address: peripheral_key.peripheral_address,
+            let fqcn = Fqcn {
+                peripheral_address: peripheral_key.peripheral_address,
                 service_uuid: characteristic.service_uuid,
                 characteristic_uuid: characteristic.uuid,
             };
 
-            if self.check_characteristic_is_handled(&task_key).await {
+            if self.check_characteristic_is_handled(&fqcn).await {
                 continue;
             };
 
@@ -244,7 +242,7 @@ impl PeripheralManager {
                 peripheral: Arc::clone(&peripheral),
                 characteristic,
                 characteristic_config: conf,
-                task_key: Arc::new(task_key),
+                fqcn: Arc::new(fqcn),
                 peripheral_config: Arc::clone(&peripheral_config),
             };
 
@@ -254,18 +252,18 @@ impl PeripheralManager {
         Ok(())
     }
 
-    async fn check_characteristic_is_handled(&self, task_key: &TaskKey) -> bool {
-        self.poll_handle_map.lock().await.get(task_key).is_some()
+    async fn check_characteristic_is_handled(&self, fqcn: &Fqcn) -> bool {
+        self.poll_handle_map.lock().await.get(fqcn).is_some()
             || self
                 .subscribed_characteristics
                 .lock()
                 .await
-                .get(task_key)
+                .get(fqcn)
                 .is_some()
     }
 
     async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
-        let tk = ctx.task_key.clone();
+        let tk = ctx.fqcn.clone();
         let self_clone = Arc::clone(&self);
 
         match ctx.characteristic_config.as_ref() {
@@ -274,7 +272,7 @@ impl PeripheralManager {
                 self.subscription_map
                     .lock()
                     .await
-                    .entry(ctx.task_key.address)
+                    .entry(ctx.fqcn.peripheral_address)
                     .or_insert_with(|| {
                         tokio::spawn(async move {
                             let msg = format!("Ended subscription {ctx}");
@@ -302,18 +300,24 @@ impl PeripheralManager {
         Ok(())
     }
 
-    async fn abort_subscription(&self, tk: Arc<TaskKey>) {
+    async fn abort_subscription(&self, tk: Arc<Fqcn>) {
         let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
-        subscribed_characteristics.retain(|present_tk, _| present_tk.address != tk.address);
+        subscribed_characteristics
+            .retain(|present_tk, _| present_tk.peripheral_address != tk.peripheral_address);
 
-        if let Some(handle) = self.subscription_map.lock().await.remove(&tk.address) {
+        if let Some(handle) = self
+            .subscription_map
+            .lock()
+            .await
+            .remove(&tk.peripheral_address)
+        {
             handle.abort();
         } else {
             warn!("Can't abort for device {}: no handle found", tk);
         }
     }
 
-    async fn abort_polling(&self, tk: Arc<TaskKey>) {
+    async fn abort_polling(&self, tk: Arc<Fqcn>) {
         if let Some(handle) = self.poll_handle_map.lock().await.remove(&tk) {
             handle.abort();
         } else {
@@ -321,21 +325,18 @@ impl PeripheralManager {
         }
     }
 
-    async fn get_characteristic_conf(
-        &self,
-        task_key: &TaskKey,
-    ) -> Option<Arc<CharacteristicConfig>> {
+    async fn get_characteristic_conf(&self, fqcn: &Fqcn) -> Option<Arc<CharacteristicConfig>> {
         self.subscribed_characteristics
             .lock()
             .await
-            .get(task_key)
+            .get(fqcn)
             .cloned()
     }
 
     async fn subscribe(&self, ctx: &ConnectionContext) -> CollectorResult<()> {
         let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
 
-        match subscribed_characteristics.entry(ctx.task_key.clone()) {
+        match subscribed_characteristics.entry(ctx.fqcn.clone()) {
             std::collections::hash_map::Entry::Occupied(_) => {
                 warn!("Already subscribed to {ctx}");
                 return Ok(());
@@ -374,7 +375,7 @@ impl PeripheralManager {
             let value = CharacteristicPayload {
                 created_at: chrono::offset::Utc::now(),
                 value,
-                task_key: ctx.task_key.clone(),
+                fqcn: ctx.fqcn.clone(),
                 conf: Arc::clone(&ctx.characteristic_config),
             };
             self.payload_sender.send(value).await?;
@@ -386,12 +387,9 @@ impl PeripheralManager {
         let mut notification_stream = ctx.peripheral.notifications().await?;
 
         while let Some(event) = notification_stream.next().await {
-            let task_key = Arc::new(
-                ctx.task_key
-                    .with_characteristic(event.service_uuid, event.uuid),
-            );
-            let Some(conf) = self.get_characteristic_conf(&task_key).await else {
-                // warn!("No conf found for characteristic: {task_key}; {:?}", ctx.peripheral);
+            let fqcn = Arc::new(ctx.fqcn.with_characteristic(event.service_uuid, event.uuid));
+            let Some(conf) = self.get_characteristic_conf(&fqcn).await else {
+                // warn!("No conf found for characteristic: {fqcn}; {:?}", ctx.peripheral);
                 continue;
             };
             let CharacteristicConfig::Subscribe { converter, .. } = conf.as_ref() else {
@@ -402,7 +400,7 @@ impl PeripheralManager {
             let value = CharacteristicPayload {
                 created_at: chrono::offset::Utc::now(),
                 value,
-                task_key,
+                fqcn,
                 conf,
             };
             self.payload_sender.send(value).await?;
@@ -416,110 +414,58 @@ impl PeripheralManager {
     async fn get_peripherals<I>(
         &self,
         peripheral_addresses: I,
-    ) -> CollectorResult<Vec<Arc<Peripheral>>>
+    ) -> CollectorResult<HashMap<BDAddr, Arc<Peripheral>>>
     where
         I: IntoIterator<Item = BDAddr>,
     {
-        let mut result = vec![];
+        let mut result = HashMap::new();
         for address in peripheral_addresses {
             let peripheral = self
                 .get_peripheral(&address)
                 .await?
                 .with_context(|| format!("Failed to get peripheral: {:?}", address))?;
-            result.push(peripheral);
+            result.entry(address).or_insert(peripheral);
         }
         Ok(result)
     }
-    pub(crate) async fn execute_write(
+
+    pub(crate) async fn get_peripheral_characteristic(
         &self,
-        request: PeripheralIoRequestDto,
-    ) -> CollectorResult<PeripheralIoResponseDto> {
-        let parallelism = request.parallelism.map(|p| p.get()).unwrap_or(1);
-        let all_addresses: BTreeSet<BDAddr> = request
-            .write_commands
-            .iter()
-            .map(|write_request| write_request.peripheral_address)
-            .chain(
-                request
-                    .read_commands
-                    .iter()
-                    .map(|read_request| read_request.peripheral_address),
-            )
-            .collect();
+        fqcn: &Fqcn,
+    ) -> CollectorResult<(Arc<Peripheral>, Characteristic)> {
+        let peripheral = self
+            .get_peripheral(&fqcn.peripheral_address)
+            .await?
+            .with_context(|| format!("Failed to get peripheral: {fqcn}"))?;
 
-        info!("Extracted addresses: {:?}", all_addresses);
-
-        let write_results: Vec<ResultDto<()>> = stream::iter(request.write_commands)
-            .map(|write_request| async move { self.write_value(write_request).await })
-            .buffered(parallelism)
-            .map(ResultDto::from)
-            .collect::<Vec<_>>()
-            .await;
-
-        let read_results: Vec<ResultDto<Vec<u8>>> = stream::iter(request.read_commands)
-            .map(|read_request| async move { self.read_value(read_request).await })
-            .buffered(parallelism)
-            .map(ResultDto::from)
-            .collect::<Vec<_>>()
-            .await;
-
-
-        Ok(PeripheralIoResponseDto {
-            write_commands: write_results,
-            read_commands: read_results,
-        })
-    }
-
-    pub(crate) async fn read_value(
-        &self,
-        request: ReadPeripheralValueCommandDto,
-    ) -> CollectorResult<Vec<u8>> {
-        let task_key = TaskKey::from(&request);
-        let (peripheral, characteristic) = self.get_peripheral_characteristic(&task_key).await?;
-
-        if !request.wait_notification {
-            let value = peripheral.read(&characteristic).await?;
-            self.disconnect_if_has_no_tasks(peripheral).await?;
-            return Ok(value);
+        if !peripheral.is_connected().await? {
+            info!("Connecting to {fqcn}");
+            peripheral.connect().await?;
         }
 
-        peripheral.subscribe(&characteristic).await?;
-        let mut notification_stream = peripheral.notifications().await?;
-        let result = tokio::spawn(async move {
-            while let Some(event) = notification_stream.next().await {
-                if !task_key.matches(&event) {
-                    continue;
-                }
-                return Ok(event.value);
-            }
-            Err(CollectorError::EndOfStream)
-        });
+        peripheral.discover_services().await?;
+        info!("Discovered services");
+        let service = peripheral
+            .services()
+            .into_iter()
+            .find(|service| service.uuid == fqcn.service_uuid)
+            .with_context(|| format!("Failed to find service {fqcn}"))?;
 
-        let timeout_duration = request.timeout_ms.unwrap_or(Duration::from_secs(60));
+        info!("Found service: {}", service.uuid);
 
-        let result = tokio::time::timeout(timeout_duration, result).await??;
-        let _ = self.disconnect_if_has_no_tasks(peripheral).await;
-        result
+        let characteristic = service
+            .characteristics
+            .into_iter()
+            .find(|characteristic| characteristic.uuid == fqcn.characteristic_uuid)
+            .with_context(|| format!("Failed to find characteristic {fqcn}",))?;
+
+        Ok((peripheral, characteristic))
     }
 
-    pub(crate) async fn write_value(
+    pub(crate) async fn disconnect_if_has_no_tasks(
         &self,
-        request: WritePeripheralValueCommandDto,
+        peripheral: Arc<Peripheral>,
     ) -> CollectorResult<()> {
-        let task_key = TaskKey::from(&request);
-        let (peripheral, characteristic) = self.get_peripheral_characteristic(&task_key).await?;
-
-        let result = peripheral
-            .write(&characteristic, &request.value, request.get_write_type())
-            .await;
-
-        self.disconnect_if_has_no_tasks(peripheral).await?;
-
-        result?;
-        Ok(())
-    }
-
-    async fn disconnect_if_has_no_tasks(&self, peripheral: Arc<Peripheral>) -> CollectorResult<()> {
         let poll_handle_map = self.poll_handle_map.lock().await;
         let subscription_map = self.subscription_map.lock().await;
         let peripheral_address = peripheral.address();
@@ -528,7 +474,7 @@ impl PeripheralManager {
         }
         if poll_handle_map
             .keys()
-            .any(|task_key| task_key.address == peripheral_address)
+            .any(|fqcn| fqcn.peripheral_address == peripheral_address)
         {
             return Ok(());
         }
@@ -536,37 +482,6 @@ impl PeripheralManager {
         peripheral.disconnect().await?;
 
         Ok(())
-    }
-
-    async fn get_peripheral_characteristic(
-        &self,
-        task_key: &TaskKey,
-    ) -> CollectorResult<(Arc<Peripheral>, Characteristic)> {
-        let peripheral = self
-            .get_peripheral(&task_key.address)
-            .await?
-            .with_context(|| format!("Failed to get peripheral: {task_key}"))?;
-
-        if !peripheral.is_connected().await? {
-            info!("Connecting to {task_key}");
-            peripheral.connect().await?;
-        }
-
-        peripheral.discover_services().await?;
-        let service = peripheral
-            .services()
-            .into_iter()
-            .find(|service| service.uuid == task_key.service_uuid)
-            .with_context(|| format!("Failed to find service {task_key}"))?;
-
-
-        let characteristic = service
-            .characteristics
-            .into_iter()
-            .find(|characteristic| characteristic.uuid == task_key.characteristic_uuid)
-            .with_context(|| format!("Failed to find characteristic {task_key}",))?;
-
-        Ok((peripheral, characteristic))
     }
 }
 

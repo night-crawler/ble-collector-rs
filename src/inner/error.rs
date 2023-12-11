@@ -54,6 +54,9 @@ pub(crate) enum CollectorError {
 
     #[error("Adapter `{0}` not found")]
     AdapterNotFound(String),
+
+    #[error("Unexpected IO command")]
+    UnexpectedIoCommand,
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

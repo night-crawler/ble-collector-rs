@@ -58,7 +58,6 @@ where
     }
 }
 
-pub(crate) type JsonResult<T, E> = Result<rocket::serde::json::Json<T>, HttpError<E>>;
 pub(crate) type WrappedJsonResult<T, E> =
     Result<rocket::serde::json::Json<Envelope<T>>, HttpError<E>>;
 pub(crate) type ApiResult<T> = WrappedJsonResult<T, CollectorError>;
