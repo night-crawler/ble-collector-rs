@@ -288,67 +288,7 @@ impl IoCommand {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use btleplug::api::BDAddr;
-    use uuid::Uuid;
-
-    use crate::inner::peripheral_manager::Fqcn;
-
     use super::*;
-
-    #[test]
-    fn test_serialize_io_request() {
-        let request = PeripheralIoRequestDto {
-            batches: vec![PeripheralIoBatchRequestDto {
-                commands: vec![
-                    IoCommand::Write {
-                        fqcn: Fqcn {
-                            peripheral_address: BDAddr::from_str("00:00:00:00:00:00").unwrap(),
-                            service_uuid: Uuid::from_str("0000180f-0000-1000-8000-00805f9b34fb")
-                                .unwrap(),
-                            characteristic_uuid: Uuid::from_str(
-                                "00002a19-0000-1000-8000-00805f9b34fb",
-                            )
-                            .unwrap(),
-                        },
-                        value: vec![1, 2, 3],
-                        wait_response: true,
-                    },
-                    IoCommand::Read {
-                        fqcn: Fqcn {
-                            peripheral_address: BDAddr::from_str("00:00:00:00:00:00").unwrap(),
-                            service_uuid: Uuid::from_str("0000180f-0000-1000-8000-00805f9b34fb")
-                                .unwrap(),
-                            characteristic_uuid: Uuid::from_str(
-                                "00002a19-0000-1000-8000-00805f9b34fb",
-                            )
-                            .unwrap(),
-                        },
-                        wait_notification: true,
-                        timeout_ms: Some(std::time::Duration::from_secs(1)),
-                    },
-                ],
-                parallelism: Some(BoundedUsize::new(1).unwrap()),
-            }],
-            parallelism: Some(BoundedUsize::new(1).unwrap()),
-        };
-
-        let serialized = serde_json::to_string_pretty(&request).unwrap();
-        // println!("{}", serialized);
-
-        let q = r#"
-{"batches": [{"commands": [{"Write": {"fqcn": {"peripheral_address": "FA:6F:EC:EE:4B:36", "service_uuid": "ac866789-aaaa-eeee-a329-969d4bc8621e", "characteristic_uuid": "0000a004-0000-1000-8000-00805f9b34fb"}, "value": [2], "wait_response": true}}, {"Read": {"fqcn": {"peripheral_address": "FA:6F:EC:EE:4B:36", "service_uuid": "ac866789-aaaa-eeee-a329-969d4bc8621e", "characteristic_uuid": "0000a006-0000-1000-8000-00805f9b34fb"}, "wait_notification": true, "timeout_ms": 2000}}], "parallelism": 32}], "parallelism": 4}
-        "#;
-
-        let q = "{\"batches\": [{\"commands\": [{\"Write\": {\"fqcn\": {\"peripheral_address\": \"FA:6F:EC:EE:4B:36\", \"service_uuid\": \"ac866789-aaaa-eeee-a329-969d4bc8621e\", \"characteristic_uuid\": \"0000a004-0000-1000-8000-00805f9b34fb\"}, \"value\": [2], \"wait_response\": true}, \"Read\": null}, {\"Write\": null, \"Read\": {\"fqcn\": {\"peripheral_address\": \"FA:6F:EC:EE:4B:36\", \"service_uuid\": \"ac866789-aaaa-eeee-a329-969d4bc8621e\", \"characteristic_uuid\": \"0000a006-0000-1000-8000-00805f9b34fb\"}, \"wait_notification\": true, \"timeout_ms\": 2000}}], \"parallelism\": 32}], \"parallelism\": 4}";
-
-        if let Err(err) = serde_json::from_str::<PeripheralIoRequestDto>(q) {
-            println!("{:?}", err);
-        } else {
-            println!("!!!")
-        }
-    }
 
     #[test]
     fn test_serialize_response() {

@@ -30,18 +30,21 @@ impl From<CharacteristicPayload> for DataPoint {
 pub(crate) struct CharacteristicStorage {
     pub(crate) name: Option<Arc<String>>,
     pub(crate) values: VecDeque<DataPoint>,
+    pub(crate) num_updates: usize,
 }
 
 #[derive(Debug, Default, Serialize)]
 pub(crate) struct ServiceStorage {
     pub(crate) characteristics: DashMap<Uuid, CharacteristicStorage>,
     pub(crate) updated_at: DateTime<Utc>,
+    pub(crate) num_updates: usize,
 }
 
 #[derive(Debug, Default, Serialize)]
 pub(crate) struct PeripheralStorage {
     pub(crate) services: DashMap<Uuid, ServiceStorage>,
     pub(crate) updated_at: DateTime<Utc>,
+    pub(crate) num_updates: usize,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -62,6 +65,7 @@ impl Storage {
             .or_default();
 
         peripheral.updated_at = payload.created_at;
+        peripheral.num_updates += 1;
 
         let mut service = peripheral
             .services
@@ -69,12 +73,14 @@ impl Storage {
             .or_default();
 
         service.updated_at = payload.created_at;
+        service.num_updates += 1;
 
         let mut char_storage = service
             .characteristics
             .entry(payload.fqcn.characteristic_uuid)
             .or_default();
 
+        char_storage.num_updates += 1;
         char_storage.name = payload.conf.name();
         while char_storage.values.len() > payload.conf.history_size() {
             char_storage.values.pop_front();
@@ -87,9 +93,11 @@ impl Storage {
         self: Arc<Self>,
         receiver: kanal::Receiver<CharacteristicPayload>,
     ) {
-        for payload in receiver {
-            debug!("Processing payload: {payload}");
+        for (index, payload) in receiver.enumerate() {
             self.process(payload);
+            if index % 1000 == 0 {
+                debug!("Processed {index} payloads");
+            }
         }
     }
 }

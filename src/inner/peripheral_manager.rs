@@ -411,24 +411,6 @@ impl PeripheralManager {
 }
 
 impl PeripheralManager {
-    async fn get_peripherals<I>(
-        &self,
-        peripheral_addresses: I,
-    ) -> CollectorResult<HashMap<BDAddr, Arc<Peripheral>>>
-    where
-        I: IntoIterator<Item = BDAddr>,
-    {
-        let mut result = HashMap::new();
-        for address in peripheral_addresses {
-            let peripheral = self
-                .get_peripheral(&address)
-                .await?
-                .with_context(|| format!("Failed to get peripheral: {:?}", address))?;
-            result.entry(address).or_insert(peripheral);
-        }
-        Ok(result)
-    }
-
     pub(crate) async fn get_peripheral_characteristic(
         &self,
         fqcn: &Fqcn,
@@ -444,14 +426,11 @@ impl PeripheralManager {
         }
 
         peripheral.discover_services().await?;
-        info!("Discovered services");
         let service = peripheral
             .services()
             .into_iter()
             .find(|service| service.uuid == fqcn.service_uuid)
             .with_context(|| format!("Failed to find service {fqcn}"))?;
-
-        info!("Found service: {}", service.uuid);
 
         let characteristic = service
             .characteristics

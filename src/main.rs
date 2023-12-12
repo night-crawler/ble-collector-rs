@@ -47,8 +47,8 @@ fn init_logging() -> CollectorResult<()> {
 #[tokio::main]
 async fn main() -> CollectorResult<()> {
     init_logging()?;
-
-    let conf = CollectorConfigurationDto::try_from(CmdArgs::parse())?;
+    let args = CmdArgs::parse();
+    let conf = CollectorConfigurationDto::try_from(&args)?;
     let configuration_manager = Arc::new(ConfigurationManager::default());
     configuration_manager
         .add_peripherals(conf.peripherals)
@@ -99,6 +99,11 @@ async fn main() -> CollectorResult<()> {
                     list_adapters,
                     read_write_characteristic
                 ],
+            )
+            .configure(
+                rocket::config::Config::figment()
+                    .merge(("address", args.listen_address))
+                    .merge(("port", args.port)),
             )
             .launch()
             .await?;
