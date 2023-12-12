@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::inner::conf::manager::ConfigurationManager;
-use btleplug::api::{Central, Manager as _};
+use btleplug::api::{Central, Manager as _, Peripheral as _};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::stream;
 use futures_util::StreamExt;
@@ -110,10 +110,10 @@ impl AdapterManager {
 
         let peripherals_per_adapter = stream::iter(device_managers.iter())
             .map(Arc::clone)
-            .map(|adapter_service_manager| async move {
-                let adapter_info = adapter_service_manager.adapter.adapter_info().await?;
+            .map(|peripheral_manager| async move {
+                let adapter_info = peripheral_manager.adapter.adapter_info().await?;
                 let adapter_dto = AdapterDto::try_from(adapter_info)?;
-                let peripherals = adapter_service_manager.adapter.peripherals().await?;
+                let peripherals = peripheral_manager.adapter.peripherals().await?;
 
                 Ok::<(Arc<Mutex<AdapterDto>>, Vec<Peripheral>), CollectorError>((
                     Arc::new(Mutex::new(adapter_dto)),
@@ -137,6 +137,7 @@ impl AdapterManager {
 
         let intermediate_result: Vec<Arc<Mutex<AdapterDto>>> = stream::iter(flatten_iter)
             .map(|(adapter_dto, peripheral)| async move {
+                peripheral.discover_services().await?;
                 {
                     let dto = PeripheralDto::from_platform(peripheral).await?;
                     let mut adapter_dto = adapter_dto.lock().await;
