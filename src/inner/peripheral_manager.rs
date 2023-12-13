@@ -11,7 +11,7 @@ use btleplug::platform::{Adapter, Peripheral};
 use chrono::Utc;
 use futures_util::StreamExt;
 use kanal::AsyncSender;
-use log::{info, warn};
+use log::{error, info, warn};
 use retainer::Cache;
 use rocket::serde::Serialize;
 use serde::Deserialize;
@@ -497,10 +497,16 @@ async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorR
                     .get_matching_config(&peripheral_key)
                     .await
                 {
-                    peripheral_manager
-                        .clone()
-                        .connect_all_matching(peripheral_key, config)
-                        .await?;
+                    let peripheral_manager = Arc::clone(&peripheral_manager);
+                    tokio::spawn(async move {
+                        if let Err(err) = peripheral_manager
+                            .clone()
+                            .connect_all_matching(peripheral_key, config)
+                            .await
+                        {
+                            error!("Error connecting to peripheral: {err:?}");
+                        }
+                    });
                 }
             }
             CentralEvent::DeviceDisconnected(_) => {}
