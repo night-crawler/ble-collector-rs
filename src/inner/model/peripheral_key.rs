@@ -1,14 +1,22 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use anyhow::Context;
 use btleplug::api::BDAddr;
 use btleplug::platform::PeripheralId;
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub(crate) struct PeripheralKey {
     pub(crate) adapter_id: String,
     pub(crate) peripheral_address: BDAddr,
     pub(crate) name: Option<String>,
+}
+
+impl Display for PeripheralKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = self.name.as_deref().unwrap_or("Unknown");
+        write!(f, "{} {name}[{}]", self.adapter_id, self.peripheral_address)
+    }
 }
 
 impl TryFrom<PeripheralId> for PeripheralKey {

@@ -190,7 +190,7 @@ impl PeripheralManager {
         let mut join_set = JoinSet::new();
         {
             let self_clone = Arc::clone(&self);
-            join_set.spawn(async move { discover_task(self_clone).await });
+            join_set.spawn(async move { self_clone.discover_task().await });
         }
 
         if let Some(result) = join_set.join_next().await {
@@ -205,7 +205,7 @@ impl PeripheralManager {
 
     pub(crate) async fn connect_all_matching(
         self: Arc<Self>,
-        peripheral_key: PeripheralKey,
+        peripheral_key: &PeripheralKey,
         peripheral_config: Arc<FlatPeripheralConfig>,
     ) -> CollectorResult<()> {
         let peripheral = self
@@ -464,53 +464,71 @@ impl PeripheralManager {
     }
 }
 
-async fn discover_task(peripheral_manager: Arc<PeripheralManager>) -> CollectorResult<()> {
-    let mut stream = peripheral_manager.adapter.events().await?;
-    while let Some(event) = stream.next().await {
-        match event {
-            CentralEvent::DeviceDiscovered(peripheral_id)
-            | CentralEvent::DeviceUpdated(peripheral_id)
-            | CentralEvent::DeviceConnected(peripheral_id)
-            | CentralEvent::ManufacturerDataAdvertisement {
-                id: peripheral_id, ..
-            }
-            | CentralEvent::ServiceDataAdvertisement {
-                id: peripheral_id, ..
-            }
-            | CentralEvent::ServicesAdvertisement {
-                id: peripheral_id, ..
-            } => {
-                let mut peripheral_key = PeripheralKey::try_from(peripheral_id)?;
-                if let Some(peripheral) = peripheral_manager
-                    .clone()
-                    .get_peripheral(&peripheral_key.peripheral_address)
-                    .await?
-                {
-                    if let Some(props) = peripheral.properties().await? {
-                        peripheral_key.name = props.local_name;
+impl PeripheralManager {
+    async fn discover_task(self: Arc<Self>) -> CollectorResult<()> {
+        let throttle_map = Cache::new();
+        let mut num_throttles = 0usize;
+
+        let mut stream = self.adapter.events().await?;
+        while let Some(event) = stream.next().await {
+            match event {
+                CentralEvent::DeviceDiscovered(peripheral_id)
+                | CentralEvent::DeviceUpdated(peripheral_id)
+                | CentralEvent::DeviceConnected(peripheral_id)
+                | CentralEvent::ManufacturerDataAdvertisement {
+                    id: peripheral_id, ..
+                }
+                | CentralEvent::ServiceDataAdvertisement {
+                    id: peripheral_id, ..
+                }
+                | CentralEvent::ServicesAdvertisement {
+                    id: peripheral_id, ..
+                } => {
+                    let mut peripheral_key = PeripheralKey::try_from(peripheral_id)?;
+                    if let Some(peripheral) = self
+                        .clone()
+                        .get_peripheral(&peripheral_key.peripheral_address)
+                        .await?
+                    {
+                        if let Some(props) = peripheral.properties().await? {
+                            peripheral_key.name = props.local_name;
+                        }
+                    }
+
+                    let peripheral_key = Arc::new(peripheral_key);
+                    throttle_map.purge(100, 0.25).await;
+                    if throttle_map
+                        .insert(peripheral_key.clone(), true, Duration::from_secs(10))
+                        .await
+                        .is_some()
+                    {
+                        num_throttles += 1;
+                        if num_throttles % 100 == 0 {
+                            info!("Throttled {num_throttles} events");
+                        }
+                        continue;
+                    };
+
+                    if let Some(config) = self
+                        .configuration_manager
+                        .get_matching_config(&peripheral_key)
+                        .await
+                    {
+                        let peripheral_manager = Arc::clone(&self);
+                        tokio::spawn(async move {
+                            if let Err(err) = peripheral_manager
+                                .clone()
+                                .connect_all_matching(&peripheral_key, config)
+                                .await
+                            {
+                                error!("Error connecting to peripheral {peripheral_key}: {err:?}");
+                            }
+                        });
                     }
                 }
-                // TODO: throttle already processed peripherals emitting to many events
-
-                if let Some(config) = peripheral_manager
-                    .configuration_manager
-                    .get_matching_config(&peripheral_key)
-                    .await
-                {
-                    let peripheral_manager = Arc::clone(&peripheral_manager);
-                    tokio::spawn(async move {
-                        if let Err(err) = peripheral_manager
-                            .clone()
-                            .connect_all_matching(peripheral_key, config)
-                            .await
-                        {
-                            error!("Error connecting to peripheral: {err:?}");
-                        }
-                    });
-                }
+                CentralEvent::DeviceDisconnected(_) => {}
             }
-            CentralEvent::DeviceDisconnected(_) => {}
         }
+        Err(CollectorError::EndOfStream)
     }
-    Err(CollectorError::EndOfStream)
 }

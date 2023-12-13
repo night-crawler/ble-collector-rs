@@ -3,9 +3,6 @@ name = "ble-collector-rs"
 version = "0.1.0"
 edition = "2021"
 
-#[patch.crates-io]
-#btleplug = { path = "../btleplug" }
-
 [dependencies]
 btleplug = { git = "https://github.com/night-crawler/btleplug", branch = "add-service-uuid-value-notification", version = "0.11", features = ["serde"] }
 tokio = { version = "1.34", features = ["full"] }
@@ -33,7 +30,6 @@ humantime = "2.1"
 bounded-integer = { version = "0.5", features = ["serde1", "std", "types"] }
 num-bigint = "0.4"
 num-traits = "0.2"
-arc-swap = "1.6"
 dashmap = { version = "5.5", features = ["serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
