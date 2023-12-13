@@ -2,13 +2,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
-use serde_with::DurationSeconds;
 use uuid::Uuid;
 
 use crate::inner::conv::converter::Converter;
 
-#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) enum CharacteristicConfigDto {
     Subscribe {
@@ -21,8 +18,9 @@ pub(crate) enum CharacteristicConfigDto {
     Poll {
         name: Option<Arc<String>>,
         uuid: Uuid,
-        #[serde_as(as = "Option<DurationSeconds>")]
-        delay_sec: Option<Duration>,
+        #[serde(default)]
+        #[serde(with = "humantime_serde")]
+        delay: Option<Duration>,
         history_size: Option<usize>,
         #[serde(default)]
         converter: Converter,

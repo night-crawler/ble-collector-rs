@@ -28,7 +28,7 @@ mod tests {
                 services: vec![ServiceConfigDto {
                     name: Some("test".to_string().into()),
                     uuid: Uuid::nil(),
-                    default_delay_sec: Duration::from_secs(5),
+                    default_delay: Duration::from_secs(5),
                     default_history_size: 100,
                     characteristics: vec![
                         CharacteristicConfigDto::Subscribe {
@@ -41,7 +41,7 @@ mod tests {
                             history_size: None,
                             name: Some("test".to_string().into()),
                             uuid: Uuid::nil(),
-                            delay_sec: Some(Duration::from_secs(1)),
+                            delay: Some(Duration::from_secs(1)),
                             converter: Default::default(),
                         },
                     ],

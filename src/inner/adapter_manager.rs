@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::manager::ConfigurationManager;
 use btleplug::api::{Central, Manager as _, Peripheral as _};
 use btleplug::platform::{Adapter, Manager, Peripheral};
@@ -16,24 +17,28 @@ use crate::inner::peripheral_manager::{CharacteristicPayload, PeripheralManager}
 
 pub(crate) struct AdapterManager {
     peripheral_managers: Mutex<Vec<Arc<PeripheralManager>>>,
-    sender: AsyncSender<CharacteristicPayload>,
+    payload_sender: AsyncSender<CharacteristicPayload>,
     configuration_manager: Arc<ConfigurationManager>,
+    app_conf: Arc<AppConf>,
 }
 
 impl AdapterManager {
     pub(crate) fn new(
         configuration_manager: Arc<ConfigurationManager>,
-        sender: AsyncSender<CharacteristicPayload>,
+        payload_sender: AsyncSender<CharacteristicPayload>,
+        app_conf: Arc<AppConf>,
     ) -> Self {
         Self {
             peripheral_managers: Default::default(),
-            sender,
+            payload_sender,
             configuration_manager,
+            app_conf,
         }
     }
     pub(crate) async fn init(&self) -> CollectorResult<()> {
         let manager = Manager::new().await?;
         let adapters = manager.adapters().await?;
+        info!("Discovered {} adapter(s)", adapters.len());
         for adapter in adapters {
             info!("Discovered adapter: {:?}", adapter);
             self.add_adapter(adapter).await;
@@ -47,8 +52,9 @@ impl AdapterManager {
             .await
             .push(Arc::new(PeripheralManager::new(
                 adapter,
-                self.sender.clone(),
+                self.payload_sender.clone(),
                 self.configuration_manager.clone(),
+                Arc::clone(&self.app_conf),
             )));
     }
 

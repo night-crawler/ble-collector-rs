@@ -65,7 +65,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
             CharacteristicConfigDto::Poll {
                 name,
                 uuid,
-                delay_sec,
+                delay: delay_sec,
                 history_size,
                 converter,
             } => Ok(CharacteristicConfig::Poll {
@@ -73,7 +73,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 uuid: *uuid,
                 service_name,
                 service_uuid,
-                delay_sec: delay_sec.unwrap_or(service_conf.default_delay_sec),
+                delay_sec: delay_sec.unwrap_or(service_conf.default_delay),
                 history_size: history_size.unwrap_or(service_conf.default_history_size),
                 converter: converter.clone(),
             }),

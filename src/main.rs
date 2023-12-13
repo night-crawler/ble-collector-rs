@@ -7,7 +7,7 @@ use rocket::routes;
 use tokio::task::JoinSet;
 
 use crate::inner::adapter_manager::AdapterManager;
-use crate::inner::conf::cmd::CmdArgs;
+use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::controller::{
@@ -47,18 +47,19 @@ fn init_logging() -> CollectorResult<()> {
 #[tokio::main]
 async fn main() -> CollectorResult<()> {
     init_logging()?;
-    let args = CmdArgs::parse();
-    let conf = CollectorConfigurationDto::try_from(&args)?;
+    let app_conf = Arc::new(AppConf::parse());
+    let collector_conf = CollectorConfigurationDto::try_from(app_conf.as_ref())?;
     let configuration_manager = Arc::new(ConfigurationManager::default());
     configuration_manager
-        .add_peripherals(conf.peripherals)
+        .add_peripherals(collector_conf.peripherals)
         .await?;
 
-    let (sender, receiver) = kanal::unbounded_async::<CharacteristicPayload>();
+    let (payload_sender, payload_receiver) = kanal::unbounded_async::<CharacteristicPayload>();
 
     let adapter_manager = Arc::new(AdapterManager::new(
         Arc::clone(&configuration_manager),
-        sender,
+        payload_sender,
+        Arc::clone(&app_conf),
     ));
     let storage = Arc::new(Storage::new());
     adapter_manager.init().await?;
@@ -77,7 +78,7 @@ async fn main() -> CollectorResult<()> {
         let storage = storage.clone();
         join_set.spawn_blocking(|| {
             let handle = std::thread::spawn(move || {
-                storage.block_on_receiving(receiver.clone_sync());
+                storage.block_on_receiving(payload_receiver.clone_sync());
             });
             let result = handle.join();
             warn!("Storage receiver has ended: {result:?}");
@@ -102,8 +103,8 @@ async fn main() -> CollectorResult<()> {
             )
             .configure(
                 rocket::config::Config::figment()
-                    .merge(("address", args.listen_address))
-                    .merge(("port", args.port)),
+                    .merge(("address", Arc::clone(&app_conf.listen_address)))
+                    .merge(("port", app_conf.port)),
             )
             .launch()
             .await?;

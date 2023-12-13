@@ -24,7 +24,7 @@ peripherals:
     services:
       - uuid: '0000180a-0000-1000-8000-00805f9b34fb'
         name: 'Device Information'
-        default_delay_sec: 60
+        default_delay: 60s
         default_history_size: 10
         characteristics:
           - !Subscribe

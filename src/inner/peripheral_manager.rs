@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::inner::conf::cmd_args::AppConf;
 use anyhow::Context;
 use btleplug::api::{
     BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter, ValueNotification,
@@ -11,7 +12,7 @@ use btleplug::platform::{Adapter, Peripheral};
 use chrono::Utc;
 use futures_util::StreamExt;
 use kanal::AsyncSender;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use retainer::Cache;
 use rocket::serde::Serialize;
 use serde::Deserialize;
@@ -80,6 +81,7 @@ pub(crate) struct PeripheralManager {
     subscribed_characteristics: Arc<Mutex<HashMap<Arc<Fqcn>, Arc<CharacteristicConfig>>>>,
     payload_sender: AsyncSender<CharacteristicPayload>,
     configuration_manager: Arc<ConfigurationManager>,
+    pub(crate) app_conf: Arc<AppConf>,
 }
 
 struct ConnectionContext {
@@ -133,6 +135,7 @@ impl PeripheralManager {
         adapter: Adapter,
         sender: AsyncSender<CharacteristicPayload>,
         configuration_manager: Arc<ConfigurationManager>,
+        app_conf: Arc<AppConf>,
     ) -> Self {
         let cache = Arc::new(Cache::new());
         let clone = cache.clone();
@@ -149,6 +152,7 @@ impl PeripheralManager {
             subscribed_characteristics: Default::default(),
             payload_sender: sender,
             configuration_manager,
+            app_conf,
         }
     }
 
@@ -176,7 +180,7 @@ impl PeripheralManager {
                 .insert(
                     peripheral.address(),
                     Arc::new(peripheral),
-                    Duration::from_secs(60),
+                    self.app_conf.peripheral_cache_ttl,
                 )
                 .await;
         }
@@ -496,15 +500,20 @@ impl PeripheralManager {
                     }
 
                     let peripheral_key = Arc::new(peripheral_key);
-                    throttle_map.purge(100, 0.25).await;
+                    throttle_map
+                        .purge(
+                            self.app_conf.event_throttling_purge_samples,
+                            self.app_conf.event_throttling_purge_threshold,
+                        )
+                        .await;
                     if throttle_map
-                        .insert(peripheral_key.clone(), true, Duration::from_secs(10))
+                        .insert(peripheral_key.clone(), true, self.app_conf.event_throttling)
                         .await
                         .is_some()
                     {
                         num_throttles += 1;
-                        if num_throttles % 100 == 0 {
-                            info!("Throttled {num_throttles} events");
+                        if num_throttles % 1000 == 0 {
+                            debug!("Throttled {num_throttles} events");
                         }
                         continue;
                     };

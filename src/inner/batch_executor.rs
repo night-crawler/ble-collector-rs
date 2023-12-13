@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use bounded_integer::BoundedUsize;
 use btleplug::api::Peripheral as _;
@@ -34,7 +33,12 @@ pub(crate) async fn execute_batches(
 
     let batch_responses = stream::iter(request.batches.into_iter().zip(manager_stream))
         .map(|(batch, peripheral_manager)| async { execute_batch(peripheral_manager, batch).await })
-        .buffered(request.parallelism.map(BoundedUsize::get).unwrap_or(1))
+        .buffered(
+            request
+                .parallelism
+                .map(BoundedUsize::get)
+                .unwrap_or(peripheral_manager.app_conf.default_multi_batch_parallelism),
+        )
         .collect::<Vec<_>>()
         .await;
 
@@ -70,7 +74,12 @@ async fn execute_batch(
             }
         }
     })
-    .buffered(batch.parallelism.map(BoundedUsize::get).unwrap_or(1))
+    .buffered(
+        batch
+            .parallelism
+            .map(BoundedUsize::get)
+            .unwrap_or(peripheral_manager.app_conf.default_batch_parallelism),
+    )
     .collect::<Vec<_>>()
     .await;
 
@@ -82,7 +91,9 @@ async fn read_value_with_timeout(
     latch: Arc<CountDownLatch>,
     cmd: IoCommand,
 ) -> CollectorResult<Vec<u8>> {
-    let timeout_duration = cmd.get_timeout().unwrap_or(Duration::from_secs(5));
+    let timeout_duration = cmd
+        .get_timeout()
+        .unwrap_or(manager.app_conf.default_read_timeout);
     let result = tokio::time::timeout(timeout_duration, read_value(manager, latch, cmd)).await??;
     Ok(result)
 }
@@ -122,7 +133,7 @@ async fn read_value(
         Err(CollectorError::EndOfStream)
     });
 
-    let timeout_duration = timeout_ms.unwrap_or(Duration::from_secs(60));
+    let timeout_duration = timeout_ms.unwrap_or(manager.app_conf.default_read_timeout);
 
     let result = tokio::time::timeout(timeout_duration, result).await??;
     let _ = manager.disconnect_if_has_no_tasks(peripheral).await;
@@ -134,7 +145,9 @@ async fn write_value_with_timeout(
     latch: Arc<CountDownLatch>,
     cmd: IoCommand,
 ) -> CollectorResult<()> {
-    let timeout_duration = cmd.get_timeout().unwrap_or(Duration::from_secs(5));
+    let timeout_duration = cmd
+        .get_timeout()
+        .unwrap_or(manager.app_conf.default_write_timeout);
     tokio::time::timeout(timeout_duration, write_value(manager, latch, cmd)).await??;
     Ok(())
 }

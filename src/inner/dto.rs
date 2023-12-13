@@ -172,17 +172,14 @@ impl PeripheralDto {
             info!("Discovered services for peripheral: {:?}", peripheral.id());
         }
 
-        let props = match peripheral.properties().await {
-            Ok(props) => props,
-            Err(err) => {
-                error!(
-                    "Error getting properties for peripheral {:?}: {:?}",
-                    peripheral.id(),
-                    err
-                );
-                None
-            }
-        };
+        let props = peripheral.properties().await.unwrap_or_else(|err| {
+            error!(
+                "Error getting properties for peripheral {:?}: {:?}",
+                peripheral.id(),
+                err
+            );
+            None
+        });
         let services = peripheral.services();
 
         Ok(Self {
@@ -268,8 +265,8 @@ pub(crate) enum IoCommand {
 impl IoCommand {
     pub(crate) fn get_timeout(&self) -> Option<std::time::Duration> {
         match self {
-            IoCommand::Write { timeout_ms, .. } => timeout_ms.clone(),
-            IoCommand::Read { timeout_ms, .. } => timeout_ms.clone(),
+            IoCommand::Write { timeout_ms, .. } => *timeout_ms,
+            IoCommand::Read { timeout_ms, .. } => *timeout_ms,
         }
     }
     pub(crate) fn get_write_type(&self) -> WriteType {
