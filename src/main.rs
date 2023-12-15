@@ -3,6 +3,7 @@ use std::sync::Arc;
 use clap::Parser;
 use fern::colors::{Color, ColoredLevelConfig};
 use log::{info, warn};
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use rocket::routes;
 use tokio::task::JoinSet;
 
@@ -11,10 +12,11 @@ use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::controller::{
-    describe_adapters, get_collector_data, list_adapters, list_configurations,
+    describe_adapters, get_collector_data, get_metrics, list_adapters, list_configurations,
     read_write_characteristic,
 };
 use crate::inner::error::CollectorResult;
+use crate::inner::metrics::describe_metrics;
 use crate::inner::peripheral_manager::CharacteristicPayload;
 use crate::inner::storage::Storage;
 
@@ -47,7 +49,14 @@ fn init_logging() -> CollectorResult<()> {
 #[tokio::main]
 async fn main() -> CollectorResult<()> {
     init_logging()?;
+    let builder = PrometheusBuilder::new();
+    let prometheus_handle: PrometheusHandle = builder
+        .install_recorder()
+        .expect("failed to install recorder");
+    describe_metrics();
+
     let app_conf = Arc::new(AppConf::parse());
+
     let collector_conf = CollectorConfigurationDto::try_from(app_conf.as_ref())?;
     let configuration_manager = Arc::new(ConfigurationManager::default());
     configuration_manager
@@ -91,6 +100,7 @@ async fn main() -> CollectorResult<()> {
             .manage(configuration_manager)
             .manage(adapter_manager)
             .manage(storage)
+            .manage(prometheus_handle)
             .mount(
                 "/ble",
                 routes![
@@ -98,9 +108,10 @@ async fn main() -> CollectorResult<()> {
                     list_configurations,
                     get_collector_data,
                     list_adapters,
-                    read_write_characteristic
+                    read_write_characteristic,
                 ],
             )
+            .mount("/", routes![get_metrics])
             .configure(
                 rocket::config::Config::figment()
                     .merge(("address", Arc::clone(&app_conf.listen_address)))

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,11 +8,12 @@ use anyhow::Context;
 use btleplug::api::{
     BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter, ValueNotification,
 };
-use btleplug::platform::{Adapter, Peripheral};
+use btleplug::platform::{Adapter, Peripheral, PeripheralId};
 use chrono::Utc;
 use futures_util::StreamExt;
 use kanal::AsyncSender;
 use log::{debug, error, info, warn};
+use metrics::counter;
 use retainer::Cache;
 use rocket::serde::Serialize;
 use serde::Deserialize;
@@ -25,6 +26,10 @@ use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::parse::CharacteristicConfig;
 use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::error::{CollectorError, CollectorResult};
+use crate::inner::metrics::{
+    CONNECTED_PERPHERALS, CONNECTING_ERRORS, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED,
+    PAYLOAD_THROTTLED_COUNT,
+};
 use crate::inner::model::peripheral_key::PeripheralKey;
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Hash, Serialize, Deserialize)]
@@ -466,12 +471,61 @@ impl PeripheralManager {
 
         Ok(())
     }
+
+    pub(crate) async fn num_connected_devices(&self) -> usize {
+        let poll_handle_map = self.poll_handle_map.lock().await;
+        let subscription_map = self.subscription_map.lock().await;
+
+        let mut addresses = HashSet::new();
+        addresses.extend(poll_handle_map.keys().map(|fqcn| fqcn.peripheral_address));
+        addresses.extend(subscription_map.keys());
+
+        addresses.len()
+    }
+
+    pub(crate) async fn handle_disconnect(&self, peripheral_key: &PeripheralKey) {
+        let mut poll_handle_map = self.poll_handle_map.lock().await;
+        let mut subscription_map = self.subscription_map.lock().await;
+        self.peripheral_cache
+            .remove(&peripheral_key.peripheral_address)
+            .await;
+
+        poll_handle_map.retain(|fqcn, handle| {
+            if fqcn.peripheral_address == peripheral_key.peripheral_address {
+                handle.abort();
+                false
+            } else {
+                true
+            }
+        });
+        subscription_map.retain(|address, handle| {
+            if *address == peripheral_key.peripheral_address {
+                handle.abort();
+                false
+            } else {
+                true
+            }
+        });
+    }
 }
 
 impl PeripheralManager {
+    async fn build_key(&self, peripheral_id: PeripheralId) -> CollectorResult<PeripheralKey> {
+        let mut peripheral_key = PeripheralKey::try_from(peripheral_id)?;
+        if let Some(peripheral) = self
+            .get_peripheral(&peripheral_key.peripheral_address)
+            .await?
+        {
+            if let Some(props) = peripheral.properties().await? {
+                peripheral_key.name = props.local_name;
+            }
+        }
+
+        Ok(peripheral_key)
+    }
+
     async fn discover_task(self: Arc<Self>) -> CollectorResult<()> {
         let throttle_map = Cache::new();
-        let mut num_throttles = 0usize;
 
         let mut stream = self.adapter.events().await?;
         while let Some(event) = stream.next().await {
@@ -488,18 +542,7 @@ impl PeripheralManager {
                 | CentralEvent::ServicesAdvertisement {
                     id: peripheral_id, ..
                 } => {
-                    let mut peripheral_key = PeripheralKey::try_from(peripheral_id)?;
-                    if let Some(peripheral) = self
-                        .clone()
-                        .get_peripheral(&peripheral_key.peripheral_address)
-                        .await?
-                    {
-                        if let Some(props) = peripheral.properties().await? {
-                            peripheral_key.name = props.local_name;
-                        }
-                    }
-
-                    let peripheral_key = Arc::new(peripheral_key);
+                    let peripheral_key = Arc::new(self.build_key(peripheral_id).await?);
                     throttle_map
                         .purge(
                             self.app_conf.event_throttling_purge_samples,
@@ -511,10 +554,7 @@ impl PeripheralManager {
                         .await
                         .is_some()
                     {
-                        num_throttles += 1;
-                        if num_throttles % 1000 == 0 {
-                            debug!("Throttled {num_throttles} events");
-                        }
+                        PAYLOAD_THROTTLED_COUNT.increment(1, &[("scope", "discovery")]);
                         continue;
                     };
 
@@ -525,18 +565,34 @@ impl PeripheralManager {
                     {
                         let peripheral_manager = Arc::clone(&self);
                         tokio::spawn(async move {
+                            CONNECTIONS_HANDLED.increment(1, &[("scope", "discovery")]);
                             if let Err(err) = peripheral_manager
                                 .clone()
                                 .connect_all_matching(&peripheral_key, config)
                                 .await
                             {
+                                CONNECTING_ERRORS.increment(1, &[("scope", "discovery")]);
                                 error!("Error connecting to peripheral {peripheral_key}: {err:?}");
                             }
                         });
                     }
                 }
-                CentralEvent::DeviceDisconnected(_) => {}
-            }
+                CentralEvent::DeviceDisconnected(peripheral_id) => {
+                    let peripheral_key = self.build_key(peripheral_id).await?;
+                    let peripheral_manager = Arc::clone(&self);
+
+                    tokio::spawn(async move {
+                        CONNECTIONS_DROPPED.increment(1, &[("scope", "discovery")]);
+                        peripheral_manager.handle_disconnect(&peripheral_key).await;
+                        warn!("Device disconnected: {peripheral_key}");
+                    });
+                }
+            };
+
+            CONNECTED_PERPHERALS.gauge(
+                self.num_connected_devices().await as f64,
+                &[("scope", "discovery")],
+            );
         }
         Err(CollectorError::EndOfStream)
     }

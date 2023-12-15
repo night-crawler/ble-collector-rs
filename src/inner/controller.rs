@@ -1,3 +1,4 @@
+use metrics_exporter_prometheus::PrometheusHandle;
 use std::sync::Arc;
 
 use rocket::http::Status;
@@ -59,4 +60,9 @@ pub(crate) async fn read_write_characteristic(
     };
     let response = execute_batches(peripheral_manager, request.into_inner()).await;
     Ok(Envelope::from(response).into())
+}
+
+#[get("/metrics")]
+pub(crate) async fn get_metrics(handle: &rocket::State<PrometheusHandle>) -> String {
+    handle.render()
 }

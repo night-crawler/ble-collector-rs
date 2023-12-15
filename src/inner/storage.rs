@@ -5,10 +5,12 @@ use btleplug::api::BDAddr;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use log::debug;
+use metrics::counter;
 use rocket::serde::Serialize;
 use uuid::Uuid;
 
 use crate::inner::conv::converter::CharacteristicValue;
+use crate::inner::metrics::PAYLOAD_PROCESSED_COUNT;
 use crate::inner::peripheral_manager::CharacteristicPayload;
 
 #[derive(Debug, Serialize)]
@@ -95,7 +97,8 @@ impl Storage {
     ) {
         for (index, payload) in receiver.enumerate() {
             self.process(payload);
-            if index % 1000 == 0 {
+            counter!(PAYLOAD_PROCESSED_COUNT.metric_name, 1, "scope" => "processing");
+            if index % 10000 == 0 {
                 debug!("Processed {index} payloads");
             }
         }
