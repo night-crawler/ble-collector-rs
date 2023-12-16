@@ -13,7 +13,7 @@ use crate::inner::dto::{
 };
 use crate::inner::error::CollectorError;
 use crate::inner::http_error::{ApiResult, HttpError};
-use crate::inner::storage::Storage;
+use crate::inner::process::api_publisher::ApiPublisher;
 
 #[get("/adapters/describe")]
 pub(crate) async fn describe_adapters(
@@ -41,8 +41,8 @@ pub(crate) async fn list_configurations(
 
 #[get("/data")]
 pub(crate) async fn get_collector_data(
-    storage: &rocket::State<Arc<Storage>>,
-) -> ApiResult<Arc<Storage>> {
+    storage: &rocket::State<Arc<ApiPublisher>>,
+) -> ApiResult<Arc<ApiPublisher>> {
     Ok(Envelope::from(Arc::clone(storage)).into())
 }
 

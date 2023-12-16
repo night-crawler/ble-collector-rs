@@ -18,12 +18,16 @@ use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::flat::{FlatPeripheralConfig, ServiceCharacteristicKey};
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::parse::CharacteristicConfig;
+use crate::inner::debounce_limiter::DebounceLimiter;
 use crate::inner::error::{CollectorError, CollectorResult};
-use crate::inner::metrics::{CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTING_ERRORS, CONNECTION_DURATION, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED, PAYLOAD_THROTTLED_COUNT, SERVICE_DISCOVERY_DURATION, TOTAL_CONNECTING_DURATION};
+use crate::inner::metrics::{
+    CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTING_ERRORS, CONNECTIONS_DROPPED,
+    CONNECTIONS_HANDLED, CONNECTION_DURATION, PAYLOAD_THROTTLED_COUNT, SERVICE_DISCOVERY_DURATION,
+    TOTAL_CONNECTING_DURATION,
+};
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::model::fqcn::Fqcn;
 use crate::inner::model::peripheral_key::PeripheralKey;
-use crate::inner::debounce_limiter::DebounceLimiter;
 
 pub(crate) struct PeripheralManager {
     pub(crate) adapter: Arc<Adapter>,
@@ -162,18 +166,21 @@ impl PeripheralManager {
                         Label::new("scope", "connection"),
                         peripheral_key.peripheral_label(),
                     ],
-                    || {
-                        peripheral.connect()
-                    },
+                    || peripheral.connect(),
                 )
                 .await?;
             info!("Connected to {peripheral_key}");
         }
 
-        SERVICE_DISCOVERY_DURATION.measure_ms(
-            [Label::new("scope", "connection"), peripheral_key.peripheral_label()],
-            || peripheral.discover_services(),
-        ).await?;
+        SERVICE_DISCOVERY_DURATION
+            .measure_ms(
+                [
+                    Label::new("scope", "connection"),
+                    peripheral_key.peripheral_label(),
+                ],
+                || peripheral.discover_services(),
+            )
+            .await?;
 
         for characteristic in peripheral
             .services()
@@ -220,11 +227,11 @@ impl PeripheralManager {
     async fn check_characteristic_is_handled(&self, fqcn: &Fqcn) -> bool {
         self.poll_handle_map.lock().await.get(fqcn).is_some()
             || self
-            .subscribed_characteristics
-            .lock()
-            .await
-            .get(fqcn)
-            .is_some()
+                .subscribed_characteristics
+                .lock()
+                .await
+                .get(fqcn)
+                .is_some()
     }
 
     async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
@@ -341,11 +348,11 @@ impl PeripheralManager {
             ref converter,
             ..
         } = ctx.characteristic_config.as_ref()
-            else {
-                return Err(CollectorError::UnexpectedCharacteristicConfiguration(
-                    ctx.characteristic_config.clone(),
-                ));
-            };
+        else {
+            return Err(CollectorError::UnexpectedCharacteristicConfiguration(
+                ctx.characteristic_config.clone(),
+            ));
+        };
 
         loop {
             let value = ctx.peripheral.read(&ctx.characteristic).await?;
@@ -400,12 +407,12 @@ impl PeripheralManager {
 
         if !peripheral.is_connected().await? {
             info!("Connecting to {fqcn}");
-            CONNECTING_DURATION.measure_ms(
-                [Label::new("scope", "http"), fqcn.peripheral_label()],
-                || {
-                    peripheral.connect()
-                },
-            ).await?;
+            CONNECTING_DURATION
+                .measure_ms(
+                    [Label::new("scope", "http"), fqcn.peripheral_label()],
+                    || peripheral.connect(),
+                )
+                .await?;
         }
 
         peripheral.discover_services().await?;
@@ -419,7 +426,7 @@ impl PeripheralManager {
             .characteristics
             .into_iter()
             .find(|characteristic| characteristic.uuid == fqcn.characteristic_uuid)
-            .with_context(|| format!("Failed to find characteristic {fqcn}", ))?;
+            .with_context(|| format!("Failed to find characteristic {fqcn}",))?;
 
         Ok((peripheral, characteristic))
     }

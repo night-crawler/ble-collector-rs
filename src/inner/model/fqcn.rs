@@ -42,4 +42,12 @@ impl Fqcn {
     pub(crate) fn peripheral_label(&self) -> Label {
         Label::new("peripheral", self.peripheral_address.to_string())
     }
+
+    pub(crate) fn service_label(&self) -> Label {
+        Label::new("service", self.service_uuid.to_string())
+    }
+
+    pub(crate) fn characteristic_label(&self) -> Label {
+        Label::new("characteristic", self.characteristic_uuid.to_string())
+    }
 }

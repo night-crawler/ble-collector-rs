@@ -60,6 +60,28 @@ pub(crate) enum CharacteristicValue {
     F64(f64),
 }
 
+impl CharacteristicValue {
+    pub(crate) fn is_numeric(&self) -> bool {
+        matches!(self, Self::I64(_) | Self::F64(_))
+    }
+
+    pub(crate) fn as_u64(&self) -> Option<u64> {
+        match self {
+            Self::I64(value) => Some(*value as u64),
+            Self::F64(value) => Some(*value as u64),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_f64(&self) -> Option<f64> {
+        match self {
+            Self::I64(value) => Some(*value as f64),
+            Self::F64(value) => Some(*value),
+            _ => None,
+        }
+    }
+}
+
 impl Serialize for CharacteristicValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

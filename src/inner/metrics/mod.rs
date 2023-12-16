@@ -1,9 +1,22 @@
 use metrics::{counter, gauge, KeyName, Label, SharedString, Unit};
+use rocket::serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) enum MetricType {
     Counter,
     Gauge,
     Histogram,
+}
+
+impl Display for MetricType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetricType::Counter => write!(f, "Counter"),
+            MetricType::Gauge => write!(f, "Gauge"),
+            MetricType::Histogram => write!(f, "Histogram"),
+        }
+    }
 }
 
 pub(crate) struct StaticMetric {
@@ -36,9 +49,9 @@ impl StaticMetric {
         }
     }
 
-    pub(crate) fn increment<L>(&self, value: u64, labels: impl IntoIterator<Item=L>)
-        where
-            Label: From<L>,
+    pub(crate) fn increment<L>(&self, value: u64, labels: impl IntoIterator<Item = L>)
+    where
+        Label: From<L>,
     {
         let labels = labels.into_iter().map(|l| l.into()).collect::<Vec<_>>();
         match self.metric_type {
@@ -49,9 +62,9 @@ impl StaticMetric {
         }
     }
 
-    pub(crate) fn value<L>(&self, value: f64, labels: impl IntoIterator<Item=L>)
-        where
-            Label: From<L>,
+    pub(crate) fn value<L>(&self, value: f64, labels: impl IntoIterator<Item = L>)
+    where
+        Label: From<L>,
     {
         let labels = labels.into_iter().map(|l| l.into()).collect::<Vec<_>>();
         match self.metric_type {
@@ -62,9 +75,9 @@ impl StaticMetric {
         }
     }
 
-    pub(crate) fn histogram<L>(&self, value: f64, labels: impl IntoIterator<Item=L>)
-        where
-            Label: From<L>,
+    pub(crate) fn histogram<L>(&self, value: f64, labels: impl IntoIterator<Item = L>)
+    where
+        Label: From<L>,
     {
         let labels: Vec<Label> = labels.into_iter().map(|l| l.into()).collect::<Vec<Label>>();
         match self.metric_type {
@@ -77,12 +90,12 @@ impl StaticMetric {
 
     pub(crate) async fn measure_ms<Fut, R, L>(
         &self,
-        labels: impl IntoIterator<Item=L>,
+        labels: impl IntoIterator<Item = L>,
         f: impl FnOnce() -> Fut,
     ) -> R
-        where
-            Label: From<L>,
-            Fut: std::future::Future<Output=R>,
+    where
+        Label: From<L>,
+        Fut: std::future::Future<Output = R>,
     {
         let now = std::time::Instant::now();
         let result = f().await;

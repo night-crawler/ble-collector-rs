@@ -4,14 +4,12 @@ use std::sync::Arc;
 use btleplug::api::BDAddr;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use log::debug;
-use metrics::counter;
 use rocket::serde::Serialize;
 use uuid::Uuid;
 
 use crate::inner::conv::converter::CharacteristicValue;
-use crate::inner::metrics::PAYLOAD_PROCESSED_COUNT;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
+use crate::inner::process::ProcessPayload;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct DataPoint {
@@ -19,11 +17,11 @@ pub(crate) struct DataPoint {
     pub(crate) value: CharacteristicValue,
 }
 
-impl From<CharacteristicPayload> for DataPoint {
-    fn from(value: CharacteristicPayload) -> Self {
+impl From<&CharacteristicPayload> for DataPoint {
+    fn from(value: &CharacteristicPayload) -> Self {
         Self {
             ts: value.created_at,
-            value: value.value,
+            value: value.value.clone(),
         }
     }
 }
@@ -49,18 +47,18 @@ pub(crate) struct PeripheralStorage {
     pub(crate) num_updates: usize,
 }
 
-#[derive(Debug, Default, Serialize)]
-pub(crate) struct Storage {
+#[derive(Debug, Serialize)]
+pub(crate) struct ApiPublisher {
     pub(crate) peripherals: DashMap<BDAddr, PeripheralStorage>,
 }
 
-impl Storage {
+impl ApiPublisher {
     pub(crate) fn new() -> Self {
         Self {
             peripherals: DashMap::new(),
         }
     }
-    pub(crate) fn process(&self, payload: CharacteristicPayload) {
+    pub(crate) fn process(&self, payload: Arc<CharacteristicPayload>) {
         let mut peripheral = self
             .peripherals
             .entry(payload.fqcn.peripheral_address)
@@ -88,20 +86,13 @@ impl Storage {
             char_storage.values.pop_front();
         }
 
-        char_storage.values.push_back(payload.into());
+        let data_point = DataPoint::from(payload.as_ref());
+        char_storage.values.push_back(data_point);
     }
+}
 
-    pub(crate) fn block_on_receiving(
-        self: Arc<Self>,
-        receiver: kanal::Receiver<CharacteristicPayload>,
-    ) {
-        for (index, payload) in receiver.enumerate() {
-            let peripheral_address = payload.fqcn.peripheral_address.to_string();
-            self.process(payload);
-            counter!(PAYLOAD_PROCESSED_COUNT.metric_name, 1, "scope" => "processing", "peripheral" => peripheral_address);
-            if index % 10000 == 0 {
-                debug!("Processed {index} payloads");
-            }
-        }
+impl ProcessPayload for ApiPublisher {
+    fn process(&self, payload: Arc<CharacteristicPayload>) {
+        self.process(payload);
     }
 }

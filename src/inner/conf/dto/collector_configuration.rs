@@ -10,9 +10,13 @@ pub(crate) struct CollectorConfigurationDto {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inner::conf::dto::characteristic::CharacteristicConfigDto;
+    use crate::inner::conf::dto::characteristic::{
+        CharacteristicConfigDto, PublishMetricConfigDto,
+    };
     use crate::inner::conf::dto::service::ServiceConfigDto;
     use crate::inner::conf::parse::Filter;
+    use crate::inner::metrics::MetricType;
+    use std::sync::Arc;
     use std::time::Duration;
     use uuid::Uuid;
 
@@ -36,6 +40,16 @@ mod tests {
                             name: Some("test".to_string().into()),
                             uuid: Uuid::nil(),
                             converter: Default::default(),
+                            publish_metrics: Some(PublishMetricConfigDto {
+                                metric_type: MetricType::Counter,
+                                name: Arc::new("test".to_string()),
+                                description: Some(Arc::new("test".to_string())),
+                                unit: Arc::new("test".to_string()),
+                                labels: Some(Arc::new(vec![(
+                                    "test".to_string(),
+                                    "test".to_string(),
+                                )])),
+                            }),
                         },
                         CharacteristicConfigDto::Poll {
                             history_size: None,
@@ -43,6 +57,7 @@ mod tests {
                             uuid: Uuid::nil(),
                             delay: Some(Duration::from_secs(1)),
                             converter: Default::default(),
+                            publish_metrics: None,
                         },
                     ],
                 }],

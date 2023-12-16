@@ -12,6 +12,13 @@ peripherals:
             name: 'Battery Voltage'
             uuid: '00002b18-0000-1000-8999-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'battery_voltage'
+              description: 'Sensor Hub battery voltage'
+              unit: "Volt"
+              labels:
+                - ['scope', 'power']
           - !Subscribe
             name: 'Temperature'
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'

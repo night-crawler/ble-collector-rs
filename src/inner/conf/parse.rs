@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::inner::conf::dto::characteristic::CharacteristicConfigDto;
+use crate::inner::conf::dto::characteristic::{CharacteristicConfigDto, PublishMetricConfigDto};
 use crate::inner::conf::dto::service::ServiceConfigDto;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,7 @@ pub(crate) enum CharacteristicConfig {
         history_size: usize,
         #[serde(default)]
         converter: Converter,
+        publish_metrics: Option<PublishMetricConfigDto>,
     },
     Poll {
         name: Option<Arc<String>>,
@@ -36,6 +37,7 @@ pub(crate) enum CharacteristicConfig {
         history_size: usize,
         #[serde(default)]
         converter: Converter,
+        publish_metrics: Option<PublishMetricConfigDto>,
     },
 }
 
@@ -54,6 +56,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 uuid,
                 history_size,
                 converter,
+                publish_metrics,
             } => Ok(CharacteristicConfig::Subscribe {
                 name: name.clone(),
                 service_name,
@@ -61,6 +64,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 uuid: *uuid,
                 history_size: history_size.unwrap_or(service_conf.default_history_size),
                 converter: converter.clone(),
+                publish_metrics: publish_metrics.clone(),
             }),
             CharacteristicConfigDto::Poll {
                 name,
@@ -68,6 +72,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 delay: delay_sec,
                 history_size,
                 converter,
+                publish_metrics,
             } => Ok(CharacteristicConfig::Poll {
                 name: name.clone(),
                 uuid: *uuid,
@@ -76,6 +81,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 delay_sec: delay_sec.unwrap_or(service_conf.default_delay),
                 history_size: history_size.unwrap_or(service_conf.default_history_size),
                 converter: converter.clone(),
+                publish_metrics: publish_metrics.clone(),
             }),
         }
     }
@@ -99,6 +105,17 @@ impl CharacteristicConfig {
         match self {
             CharacteristicConfig::Subscribe { service_name, .. } => service_name.clone(),
             CharacteristicConfig::Poll { service_name, .. } => service_name.clone(),
+        }
+    }
+
+    pub(crate) fn publish_metrics(&self) -> Option<&PublishMetricConfigDto> {
+        match self {
+            CharacteristicConfig::Subscribe {
+                publish_metrics, ..
+            } => publish_metrics.as_ref(),
+            CharacteristicConfig::Poll {
+                publish_metrics, ..
+            } => publish_metrics.as_ref(),
         }
     }
 }

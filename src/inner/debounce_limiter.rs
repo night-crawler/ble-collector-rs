@@ -12,8 +12,8 @@ pub(crate) struct DebounceLimiter<K> {
 }
 
 impl<K> DebounceLimiter<K>
-    where
-        K: Hash + Eq + PartialEq + Clone,
+where
+    K: Hash + Eq + PartialEq + Clone,
 {
     pub(crate) fn new(_sample_size: usize, _threshold: f64, default_duration: Duration) -> Self {
         // todo: implement sample size and threshold purge logic
@@ -55,6 +55,9 @@ impl<K> DebounceLimiter<K>
     }
 
     async fn purge(&self) {
-        self.store.write().await.retain(|_, v| v.elapsed() < self.default_duration);
+        self.store
+            .write()
+            .await
+            .retain(|_, v| v.elapsed() < self.default_duration);
     }
 }

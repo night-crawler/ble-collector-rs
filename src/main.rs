@@ -20,7 +20,11 @@ use crate::inner::controller::{
 use crate::inner::error::CollectorResult;
 use crate::inner::metrics::describe_metrics;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
-use crate::inner::storage::Storage;
+use crate::inner::process::metric_publisher::MetricPublisher;
+use crate::inner::process::processor::PayloadProcessor;
+use crate::inner::process::ProcessPayload;
+use inner::process::api_publisher::ApiPublisher;
+
 mod inner;
 
 fn init_logging() -> CollectorResult<()> {
@@ -75,8 +79,25 @@ async fn main() -> CollectorResult<()> {
         payload_sender,
         Arc::clone(&app_conf),
     ));
-    let storage = Arc::new(Storage::new());
+    let payload_storage_processor = Arc::new(ApiPublisher::new());
     adapter_manager.init().await?;
+
+    let payload_metric_publisher = Arc::new(MetricPublisher::new());
+
+    let payload_processor = {
+        let payload_storage_processor = Arc::clone(&payload_storage_processor);
+        let payload_storage_processor: Arc<dyn ProcessPayload + Sync + Send> =
+            payload_storage_processor;
+
+        let payload_metric_publisher = Arc::clone(&payload_metric_publisher);
+        let payload_metric_publisher: Arc<dyn ProcessPayload + Sync + Send> =
+            payload_metric_publisher;
+
+        Arc::new(PayloadProcessor::new(
+            payload_receiver.clone_sync(),
+            vec![payload_storage_processor, payload_metric_publisher],
+        ))
+    };
 
     let mut join_set: JoinSet<CollectorResult<()>> = JoinSet::new();
 
@@ -89,10 +110,10 @@ async fn main() -> CollectorResult<()> {
     }
 
     {
-        let storage = storage.clone();
+        let payload_processor = payload_processor.clone();
         join_set.spawn_blocking(|| {
             let handle = std::thread::spawn(move || {
-                storage.block_on_receiving(payload_receiver.clone_sync());
+                payload_processor.block_on_receiving();
             });
             let result = handle.join();
             warn!("Storage receiver has ended: {result:?}");
@@ -104,7 +125,7 @@ async fn main() -> CollectorResult<()> {
         rocket::build()
             .manage(configuration_manager)
             .manage(adapter_manager)
-            .manage(storage)
+            .manage(payload_storage_processor)
             .manage(prometheus_handle)
             .mount(
                 "/ble",
