@@ -13,7 +13,8 @@ use tokio::task::JoinSet;
 
 use crate::inner::dto::{AdapterDto, AdapterInfoDto, PeripheralDto};
 use crate::inner::error::{CollectorError, CollectorResult};
-use crate::inner::peripheral_manager::{CharacteristicPayload, PeripheralManager};
+use crate::inner::model::characteristic_payload::CharacteristicPayload;
+use crate::inner::peripheral_manager::PeripheralManager;
 
 pub(crate) struct AdapterManager {
     peripheral_managers: Mutex<Vec<Arc<PeripheralManager>>>,

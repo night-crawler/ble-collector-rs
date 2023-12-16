@@ -22,13 +22,16 @@ regex = { version = "1.10.2", features = ["default"] }
 retainer = "0.3"
 fern = { version = "0.6", features = ["colored"] }
 humantime = "2.1"
+chrono = { version = "0.4", features = ["serde"] }
 bounded-integer = { version = "0.5", features = ["serde1", "std", "types"] }
 num-bigint = "0.4"
 num-traits = "0.2"
+
 dashmap = { version = "5.5", features = ["serde"] }
-chrono = { version = "0.4", features = ["serde"] }
+
 metrics = { version = "0.21" }
 metrics-exporter-prometheus = { version = "0.12" }
+metrics-util = "0.15"
 
 serde = { default-features = false, version = "1", features = ["rc"] }
 serde_yaml = "0.9"

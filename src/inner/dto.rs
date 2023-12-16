@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
 
+use crate::inner::model::fqcn::Fqcn;
 use anyhow::Context;
 use bounded_integer::BoundedUsize;
 use btleplug::api::{
@@ -11,8 +12,6 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use uuid::Uuid;
-
-use crate::inner::peripheral_manager::Fqcn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Envelope<T> {
@@ -252,6 +251,7 @@ pub(crate) enum IoCommand {
         fqcn: Fqcn,
         value: Vec<u8>,
         wait_response: bool,
+        #[serde_as(as = "Option<DurationMilliSeconds>")]
         timeout_ms: Option<std::time::Duration>,
     },
     Read {

@@ -11,3 +11,4 @@ pub(crate) mod metrics;
 pub(crate) mod model;
 pub(crate) mod peripheral_manager;
 pub(crate) mod storage;
+pub(crate) mod debounce_limiter;

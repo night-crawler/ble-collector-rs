@@ -1,4 +1,4 @@
-use metrics::{counter, gauge, KeyName, SharedString, Unit};
+use metrics::{counter, gauge, KeyName, Label, SharedString, Unit};
 
 pub(crate) enum MetricType {
     Counter,
@@ -36,7 +36,11 @@ impl StaticMetric {
         }
     }
 
-    pub(crate) fn increment(&self, value: u64, labels: &'static [(&'static str, &'static str)]) {
+    pub(crate) fn increment<L>(&self, value: u64, labels: impl IntoIterator<Item=L>)
+        where
+            Label: From<L>,
+    {
+        let labels = labels.into_iter().map(|l| l.into()).collect::<Vec<_>>();
         match self.metric_type {
             MetricType::Counter => {
                 counter!(self.metric_name, value, labels);
@@ -45,13 +49,45 @@ impl StaticMetric {
         }
     }
 
-    pub(crate) fn gauge(&self, value: f64, labels: &'static [(&'static str, &'static str)]) {
+    pub(crate) fn value<L>(&self, value: f64, labels: impl IntoIterator<Item=L>)
+        where
+            Label: From<L>,
+    {
+        let labels = labels.into_iter().map(|l| l.into()).collect::<Vec<_>>();
         match self.metric_type {
             MetricType::Gauge => {
                 gauge!(self.metric_name, value, labels);
             }
             _ => panic!("Metric type mismatch"),
         }
+    }
+
+    pub(crate) fn histogram<L>(&self, value: f64, labels: impl IntoIterator<Item=L>)
+        where
+            Label: From<L>,
+    {
+        let labels: Vec<Label> = labels.into_iter().map(|l| l.into()).collect::<Vec<Label>>();
+        match self.metric_type {
+            MetricType::Histogram => {
+                metrics::histogram!(self.metric_name, value, labels);
+            }
+            _ => panic!("Metric type mismatch"),
+        }
+    }
+
+    pub(crate) async fn measure_ms<Fut, R, L>(
+        &self,
+        labels: impl IntoIterator<Item=L>,
+        f: impl FnOnce() -> Fut,
+    ) -> R
+        where
+            Label: From<L>,
+            Fut: std::future::Future<Output=R>,
+    {
+        let now = std::time::Instant::now();
+        let result = f().await;
+        self.histogram(now.elapsed().as_millis() as f64, labels);
+        result
     }
 }
 
@@ -90,11 +126,39 @@ pub(crate) const CONNECTING_ERRORS: StaticMetric = StaticMetric {
     metric_type: MetricType::Counter,
 };
 
-pub(crate) const CONNECTED_PERPHERALS: StaticMetric = StaticMetric {
+pub(crate) const CONNECTED_PERIPHERALS: StaticMetric = StaticMetric {
     metric_name: "collector.peripheral.connected.count",
     unit: Unit::Count,
     description: "The number of connected peripherals",
     metric_type: MetricType::Gauge,
+};
+
+pub(crate) const TOTAL_CONNECTING_DURATION: StaticMetric = StaticMetric {
+    metric_name: "collector.peripheral.connecting.total.duration",
+    unit: Unit::Milliseconds,
+    description: "The total time spent connecting peripherals",
+    metric_type: MetricType::Histogram,
+};
+
+pub(crate) const CONNECTING_DURATION: StaticMetric = StaticMetric {
+    metric_name: "collector.peripheral.connecting.duration",
+    unit: Unit::Milliseconds,
+    description: "The time spent connecting peripheral",
+    metric_type: MetricType::Histogram,
+};
+
+pub(crate) const CONNECTION_DURATION: StaticMetric = StaticMetric {
+    metric_name: "collector.peripheral.connection.duration",
+    unit: Unit::Milliseconds,
+    description: "The time peripheral stays connected",
+    metric_type: MetricType::Histogram,
+};
+
+pub(crate) const SERVICE_DISCOVERY_DURATION: StaticMetric = StaticMetric {
+    metric_name: "collector.peripheral.discovery.duration",
+    unit: Unit::Milliseconds,
+    description: "The time spent discovering services",
+    metric_type: MetricType::Histogram,
 };
 
 pub(crate) fn describe_metrics() {
@@ -103,5 +167,9 @@ pub(crate) fn describe_metrics() {
     CONNECTIONS_HANDLED.describe();
     CONNECTIONS_DROPPED.describe();
     CONNECTING_ERRORS.describe();
-    CONNECTED_PERPHERALS.describe();
+    CONNECTED_PERIPHERALS.describe();
+    CONNECTION_DURATION.describe();
+    TOTAL_CONNECTING_DURATION.describe();
+    CONNECTING_DURATION.describe();
+    SERVICE_DISCOVERY_DURATION.describe();
 }

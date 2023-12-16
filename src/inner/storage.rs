@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::metrics::PAYLOAD_PROCESSED_COUNT;
-use crate::inner::peripheral_manager::CharacteristicPayload;
+use crate::inner::model::characteristic_payload::CharacteristicPayload;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct DataPoint {
@@ -96,8 +96,9 @@ impl Storage {
         receiver: kanal::Receiver<CharacteristicPayload>,
     ) {
         for (index, payload) in receiver.enumerate() {
+            let peripheral_address = payload.fqcn.peripheral_address.to_string();
             self.process(payload);
-            counter!(PAYLOAD_PROCESSED_COUNT.metric_name, 1, "scope" => "processing");
+            counter!(PAYLOAD_PROCESSED_COUNT.metric_name, 1, "scope" => "processing", "peripheral" => peripheral_address);
             if index % 10000 == 0 {
                 debug!("Processed {index} payloads");
             }

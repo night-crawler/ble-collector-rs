@@ -1,9 +1,11 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::Parser;
 use fern::colors::{Color, ColoredLevelConfig};
 use log::{info, warn};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use metrics_util::MetricKindMask;
 use rocket::routes;
 use tokio::task::JoinSet;
 
@@ -17,9 +19,8 @@ use crate::inner::controller::{
 };
 use crate::inner::error::CollectorResult;
 use crate::inner::metrics::describe_metrics;
-use crate::inner::peripheral_manager::CharacteristicPayload;
+use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::storage::Storage;
-
 mod inner;
 
 fn init_logging() -> CollectorResult<()> {
@@ -51,6 +52,10 @@ async fn main() -> CollectorResult<()> {
     init_logging()?;
     let builder = PrometheusBuilder::new();
     let prometheus_handle: PrometheusHandle = builder
+        .idle_timeout(
+            MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM | MetricKindMask::GAUGE,
+            Some(Duration::from_secs(60 * 5)),
+        )
         .install_recorder()
         .expect("failed to install recorder");
     describe_metrics();

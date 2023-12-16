@@ -4,6 +4,7 @@ use std::fmt::Display;
 use anyhow::Context;
 use btleplug::api::BDAddr;
 use btleplug::platform::PeripheralId;
+use metrics::Label;
 
 #[derive(Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub(crate) struct PeripheralKey {
@@ -19,10 +20,10 @@ impl Display for PeripheralKey {
     }
 }
 
-impl TryFrom<PeripheralId> for PeripheralKey {
+impl TryFrom<&PeripheralId> for PeripheralKey {
     type Error = anyhow::Error;
 
-    fn try_from(value: PeripheralId) -> Result<Self, Self::Error> {
+    fn try_from(value: &PeripheralId) -> Result<Self, Self::Error> {
         let serialized = serde_json::to_value(value)?;
         let deserialized: HashMap<String, String> = serde_json::from_value(serialized)?;
         let path = deserialized.into_values().next().context("No values")?;
@@ -40,5 +41,11 @@ impl TryFrom<PeripheralId> for PeripheralKey {
             peripheral_address: address,
             name: None,
         })
+    }
+}
+
+impl PeripheralKey {
+    pub(crate) fn peripheral_label(&self) -> Label {
+        Label::new("peripheral", self.peripheral_address.to_string())
     }
 }

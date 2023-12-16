@@ -3,79 +3,27 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::inner::conf::cmd_args::AppConf;
 use anyhow::Context;
-use btleplug::api::{
-    BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter, ValueNotification,
-};
+use btleplug::api::{BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Peripheral, PeripheralId};
-use chrono::Utc;
 use futures_util::StreamExt;
 use kanal::AsyncSender;
-use log::{debug, error, info, warn};
-use metrics::counter;
+use log::{error, info, warn};
+use metrics::Label;
 use retainer::Cache;
-use rocket::serde::Serialize;
-use serde::Deserialize;
 use tokio::sync::Mutex;
 use tokio::task::{JoinHandle, JoinSet};
-use uuid::Uuid;
 
+use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::flat::{FlatPeripheralConfig, ServiceCharacteristicKey};
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::parse::CharacteristicConfig;
-use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::error::{CollectorError, CollectorResult};
-use crate::inner::metrics::{
-    CONNECTED_PERPHERALS, CONNECTING_ERRORS, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED,
-    PAYLOAD_THROTTLED_COUNT,
-};
+use crate::inner::metrics::{CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTING_ERRORS, CONNECTION_DURATION, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED, PAYLOAD_THROTTLED_COUNT, SERVICE_DISCOVERY_DURATION, TOTAL_CONNECTING_DURATION};
+use crate::inner::model::characteristic_payload::CharacteristicPayload;
+use crate::inner::model::fqcn::Fqcn;
 use crate::inner::model::peripheral_key::PeripheralKey;
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Hash, Serialize, Deserialize)]
-pub(crate) struct Fqcn {
-    pub(crate) peripheral_address: BDAddr,
-    pub(crate) service_uuid: Uuid,
-    pub(crate) characteristic_uuid: Uuid,
-}
-
-impl Display for Fqcn {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}::{}:{}",
-            self.peripheral_address, self.service_uuid, self.characteristic_uuid
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct CharacteristicPayload {
-    pub(crate) created_at: chrono::DateTime<Utc>,
-    pub(crate) value: CharacteristicValue,
-    pub(crate) fqcn: Arc<Fqcn>,
-    pub(crate) conf: Arc<CharacteristicConfig>,
-}
-
-impl Display for CharacteristicPayload {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let parts = vec![
-            self.fqcn.peripheral_address.to_string(),
-            if let Some(name) = self.conf.service_name() {
-                name.to_string()
-            } else {
-                self.fqcn.service_uuid.to_string()
-            },
-            if let Some(name) = self.conf.name() {
-                name.to_string()
-            } else {
-                self.fqcn.characteristic_uuid.to_string()
-            },
-        ];
-
-        write!(f, "{}={}", parts.join(":"), self.value)
-    }
-}
+use crate::inner::debounce_limiter::DebounceLimiter;
 
 pub(crate) struct PeripheralManager {
     pub(crate) adapter: Arc<Adapter>,
@@ -95,21 +43,6 @@ struct ConnectionContext {
     characteristic_config: Arc<CharacteristicConfig>,
     fqcn: Arc<Fqcn>,
     peripheral_config: Arc<FlatPeripheralConfig>,
-}
-
-impl Fqcn {
-    fn with_characteristic(&self, service_uuid: Uuid, characteristic_uuid: Uuid) -> Self {
-        Fqcn {
-            service_uuid,
-            characteristic_uuid,
-            ..*self
-        }
-    }
-
-    pub(crate) fn matches(&self, value_notification: &ValueNotification) -> bool {
-        self.service_uuid == value_notification.service_uuid
-            && self.characteristic_uuid == value_notification.uuid
-    }
 }
 
 impl Display for ConnectionContext {
@@ -223,9 +156,24 @@ impl PeripheralManager {
             .with_context(|| format!("Failed to get peripheral: {:?}", peripheral_key))?;
 
         if !peripheral.is_connected().await? {
-            peripheral.connect().await?;
+            CONNECTING_DURATION
+                .measure_ms(
+                    [
+                        Label::new("scope", "connection"),
+                        peripheral_key.peripheral_label(),
+                    ],
+                    || {
+                        peripheral.connect()
+                    },
+                )
+                .await?;
+            info!("Connected to {peripheral_key}");
         }
-        peripheral.discover_services().await?;
+
+        SERVICE_DISCOVERY_DURATION.measure_ms(
+            [Label::new("scope", "connection"), peripheral_key.peripheral_label()],
+            || peripheral.discover_services(),
+        ).await?;
 
         for characteristic in peripheral
             .services()
@@ -255,7 +203,15 @@ impl PeripheralManager {
                 peripheral_config: Arc::clone(&peripheral_config),
             };
 
-            self.clone().handle_connect(ctx).await?;
+            TOTAL_CONNECTING_DURATION
+                .measure_ms(
+                    [
+                        Label::new("scope", "connection"),
+                        peripheral_key.peripheral_label(),
+                    ],
+                    || self.clone().handle_connect(ctx),
+                )
+                .await?;
         }
 
         Ok(())
@@ -264,15 +220,17 @@ impl PeripheralManager {
     async fn check_characteristic_is_handled(&self, fqcn: &Fqcn) -> bool {
         self.poll_handle_map.lock().await.get(fqcn).is_some()
             || self
-                .subscribed_characteristics
-                .lock()
-                .await
-                .get(fqcn)
-                .is_some()
+            .subscribed_characteristics
+            .lock()
+            .await
+            .get(fqcn)
+            .is_some()
     }
 
     async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
-        let tk = ctx.fqcn.clone();
+        let fqcn = ctx.fqcn.clone();
+        let peripheral_label = fqcn.peripheral_label();
+
         let self_clone = Arc::clone(&self);
 
         match ctx.characteristic_config.as_ref() {
@@ -285,9 +243,14 @@ impl PeripheralManager {
                     .or_insert_with(|| {
                         tokio::spawn(async move {
                             let msg = format!("Ended subscription {ctx}");
-                            let res = self_clone.clone().block_on_notifying(ctx).await;
-                            warn!("{msg}: {res:?}");
-                            self_clone.abort_subscription(tk.clone()).await;
+                            let result = CONNECTION_DURATION
+                                .measure_ms(
+                                    [Label::new("scope", "subscription"), peripheral_label],
+                                    || self_clone.clone().block_on_notifying(ctx),
+                                )
+                                .await;
+                            warn!("{msg}: {result:?}");
+                            self_clone.abort_subscription(fqcn.clone()).await;
                         })
                     });
             }
@@ -295,13 +258,18 @@ impl PeripheralManager {
                 self.poll_handle_map
                     .lock()
                     .await
-                    .entry(tk.clone())
+                    .entry(fqcn.clone())
                     .or_insert_with(|| {
                         tokio::spawn(async move {
                             let msg = format!("Ended polling {ctx}");
-                            let res = self_clone.clone().block_on_polling(ctx).await;
+                            let res = CONNECTION_DURATION
+                                .measure_ms(
+                                    [Label::from(&("scope", "polling")), peripheral_label],
+                                    || self_clone.clone().block_on_polling(ctx),
+                                )
+                                .await;
                             warn!("{msg}: {res:?}");
-                            self_clone.abort_polling(tk.clone()).await;
+                            self_clone.abort_polling(fqcn.clone()).await;
                         })
                     });
             }
@@ -309,28 +277,28 @@ impl PeripheralManager {
         Ok(())
     }
 
-    async fn abort_subscription(&self, tk: Arc<Fqcn>) {
+    async fn abort_subscription(&self, fqcn: Arc<Fqcn>) {
         let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
         subscribed_characteristics
-            .retain(|present_tk, _| present_tk.peripheral_address != tk.peripheral_address);
+            .retain(|present_tk, _| present_tk.peripheral_address != fqcn.peripheral_address);
 
         if let Some(handle) = self
             .subscription_map
             .lock()
             .await
-            .remove(&tk.peripheral_address)
+            .remove(&fqcn.peripheral_address)
         {
             handle.abort();
         } else {
-            warn!("Can't abort for device {}: no handle found", tk);
+            warn!("Can't abort for device {}: no handle found", fqcn);
         }
     }
 
-    async fn abort_polling(&self, tk: Arc<Fqcn>) {
-        if let Some(handle) = self.poll_handle_map.lock().await.remove(&tk) {
+    async fn abort_polling(&self, fqcn: Arc<Fqcn>) {
+        if let Some(handle) = self.poll_handle_map.lock().await.remove(&fqcn) {
             handle.abort();
         } else {
-            warn!("Can't abort for device {}: no handle found", tk);
+            warn!("Can't abort for device {}: no handle found", fqcn);
         }
     }
 
@@ -354,6 +322,7 @@ impl PeripheralManager {
                 entry.insert(ctx.characteristic_config.clone());
             }
         }
+        drop(subscribed_characteristics);
 
         ctx.peripheral.subscribe(&ctx.characteristic).await?;
 
@@ -372,11 +341,11 @@ impl PeripheralManager {
             ref converter,
             ..
         } = ctx.characteristic_config.as_ref()
-        else {
-            return Err(CollectorError::UnexpectedCharacteristicConfiguration(
-                ctx.characteristic_config.clone(),
-            ));
-        };
+            else {
+                return Err(CollectorError::UnexpectedCharacteristicConfiguration(
+                    ctx.characteristic_config.clone(),
+                ));
+            };
 
         loop {
             let value = ctx.peripheral.read(&ctx.characteristic).await?;
@@ -431,7 +400,12 @@ impl PeripheralManager {
 
         if !peripheral.is_connected().await? {
             info!("Connecting to {fqcn}");
-            peripheral.connect().await?;
+            CONNECTING_DURATION.measure_ms(
+                [Label::new("scope", "http"), fqcn.peripheral_label()],
+                || {
+                    peripheral.connect()
+                },
+            ).await?;
         }
 
         peripheral.discover_services().await?;
@@ -445,7 +419,7 @@ impl PeripheralManager {
             .characteristics
             .into_iter()
             .find(|characteristic| characteristic.uuid == fqcn.characteristic_uuid)
-            .with_context(|| format!("Failed to find characteristic {fqcn}",))?;
+            .with_context(|| format!("Failed to find characteristic {fqcn}", ))?;
 
         Ok((peripheral, characteristic))
     }
@@ -486,9 +460,13 @@ impl PeripheralManager {
     pub(crate) async fn handle_disconnect(&self, peripheral_key: &PeripheralKey) {
         let mut poll_handle_map = self.poll_handle_map.lock().await;
         let mut subscription_map = self.subscription_map.lock().await;
+        let mut subscribed_characteristic = self.subscribed_characteristics.lock().await;
         self.peripheral_cache
             .remove(&peripheral_key.peripheral_address)
             .await;
+
+        subscribed_characteristic
+            .retain(|fqcn, _| fqcn.peripheral_address != peripheral_key.peripheral_address);
 
         poll_handle_map.retain(|fqcn, handle| {
             if fqcn.peripheral_address == peripheral_key.peripheral_address {
@@ -510,7 +488,7 @@ impl PeripheralManager {
 }
 
 impl PeripheralManager {
-    async fn build_key(&self, peripheral_id: PeripheralId) -> CollectorResult<PeripheralKey> {
+    async fn build_key(&self, peripheral_id: &PeripheralId) -> CollectorResult<PeripheralKey> {
         let mut peripheral_key = PeripheralKey::try_from(peripheral_id)?;
         if let Some(peripheral) = self
             .get_peripheral(&peripheral_key.peripheral_address)
@@ -525,36 +503,47 @@ impl PeripheralManager {
     }
 
     async fn discover_task(self: Arc<Self>) -> CollectorResult<()> {
-        let throttle_map = Cache::new();
+        let limiter = DebounceLimiter::new(
+            self.app_conf.event_throttling_purge_samples,
+            self.app_conf.event_throttling_purge_threshold,
+            self.app_conf.event_throttling,
+        );
 
         let mut stream = self.adapter.events().await?;
         while let Some(event) = stream.next().await {
+            let peripheral_id = event.get_peripheral_id();
+            let peripheral_key = Arc::new(self.build_key(peripheral_id).await?);
+
+            CONNECTED_PERIPHERALS.value(
+                self.num_connected_devices().await as f64,
+                [&("scope", "discovery")],
+            );
+
             match event {
-                CentralEvent::DeviceDiscovered(peripheral_id)
-                | CentralEvent::DeviceUpdated(peripheral_id)
-                | CentralEvent::DeviceConnected(peripheral_id)
-                | CentralEvent::ManufacturerDataAdvertisement {
-                    id: peripheral_id, ..
+                CentralEvent::DeviceDisconnected(_) => {
+                    let peripheral_manager = Arc::clone(&self);
+
+                    tokio::spawn(async move {
+                        CONNECTIONS_DROPPED.increment(
+                            1,
+                            [
+                                Label::new("scope", "discovery"),
+                                peripheral_key.peripheral_label(),
+                            ],
+                        );
+                        peripheral_manager.handle_disconnect(&peripheral_key).await;
+                        warn!("Device disconnected: {peripheral_key}");
+                    });
                 }
-                | CentralEvent::ServiceDataAdvertisement {
-                    id: peripheral_id, ..
-                }
-                | CentralEvent::ServicesAdvertisement {
-                    id: peripheral_id, ..
-                } => {
-                    let peripheral_key = Arc::new(self.build_key(peripheral_id).await?);
-                    throttle_map
-                        .purge(
-                            self.app_conf.event_throttling_purge_samples,
-                            self.app_conf.event_throttling_purge_threshold,
-                        )
-                        .await;
-                    if throttle_map
-                        .insert(peripheral_key.clone(), true, self.app_conf.event_throttling)
-                        .await
-                        .is_some()
-                    {
-                        PAYLOAD_THROTTLED_COUNT.increment(1, &[("scope", "discovery")]);
+                _ => {
+                    if limiter.throttle(peripheral_key.clone()).await {
+                        PAYLOAD_THROTTLED_COUNT.increment(
+                            1,
+                            [
+                                Label::new("scope", "discovery"),
+                                peripheral_key.peripheral_label(),
+                            ],
+                        );
                         continue;
                     };
 
@@ -565,35 +554,50 @@ impl PeripheralManager {
                     {
                         let peripheral_manager = Arc::clone(&self);
                         tokio::spawn(async move {
-                            CONNECTIONS_HANDLED.increment(1, &[("scope", "discovery")]);
+                            CONNECTIONS_HANDLED.increment(
+                                1,
+                                [
+                                    Label::new("scope", "discovery"),
+                                    peripheral_key.peripheral_label(),
+                                ],
+                            );
                             if let Err(err) = peripheral_manager
                                 .clone()
                                 .connect_all_matching(&peripheral_key, config)
                                 .await
                             {
-                                CONNECTING_ERRORS.increment(1, &[("scope", "discovery")]);
+                                CONNECTING_ERRORS.increment(
+                                    1,
+                                    [
+                                        Label::new("scope", "discovery"),
+                                        peripheral_key.peripheral_label(),
+                                    ],
+                                );
                                 error!("Error connecting to peripheral {peripheral_key}: {err:?}");
                             }
                         });
                     }
                 }
-                CentralEvent::DeviceDisconnected(peripheral_id) => {
-                    let peripheral_key = self.build_key(peripheral_id).await?;
-                    let peripheral_manager = Arc::clone(&self);
-
-                    tokio::spawn(async move {
-                        CONNECTIONS_DROPPED.increment(1, &[("scope", "discovery")]);
-                        peripheral_manager.handle_disconnect(&peripheral_key).await;
-                        warn!("Device disconnected: {peripheral_key}");
-                    });
-                }
             };
-
-            CONNECTED_PERPHERALS.gauge(
-                self.num_connected_devices().await as f64,
-                &[("scope", "discovery")],
-            );
         }
         Err(CollectorError::EndOfStream)
+    }
+}
+
+trait CentralEventExt {
+    fn get_peripheral_id(&self) -> &PeripheralId;
+}
+
+impl CentralEventExt for CentralEvent {
+    fn get_peripheral_id(&self) -> &PeripheralId {
+        match self {
+            CentralEvent::DeviceDiscovered(id)
+            | CentralEvent::DeviceUpdated(id)
+            | CentralEvent::DeviceConnected(id)
+            | CentralEvent::DeviceDisconnected(id)
+            | CentralEvent::ManufacturerDataAdvertisement { id, .. }
+            | CentralEvent::ServiceDataAdvertisement { id, .. }
+            | CentralEvent::ServicesAdvertisement { id, .. } => id,
+        }
     }
 }
