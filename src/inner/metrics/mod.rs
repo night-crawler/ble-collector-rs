@@ -111,8 +111,8 @@ pub(crate) const PAYLOAD_PROCESSED_COUNT: StaticMetric = StaticMetric {
     metric_type: MetricType::Counter,
 };
 
-pub(crate) const PAYLOAD_THROTTLED_COUNT: StaticMetric = StaticMetric {
-    metric_name: "collector.payload.throttled.count",
+pub(crate) const EVENT_THROTTLED_COUNT: StaticMetric = StaticMetric {
+    metric_name: "collector.event.throttled.count",
     unit: Unit::Count,
     description: "The number of throttled events",
     metric_type: MetricType::Counter,
@@ -176,7 +176,7 @@ pub(crate) const SERVICE_DISCOVERY_DURATION: StaticMetric = StaticMetric {
 
 pub(crate) fn describe_metrics() {
     PAYLOAD_PROCESSED_COUNT.describe();
-    PAYLOAD_THROTTLED_COUNT.describe();
+    EVENT_THROTTLED_COUNT.describe();
     CONNECTIONS_HANDLED.describe();
     CONNECTIONS_DROPPED.describe();
     CONNECTING_ERRORS.describe();

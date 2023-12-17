@@ -23,7 +23,7 @@ use crate::inner::debounce_limiter::DebounceLimiter;
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::metrics::{
     CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTING_ERRORS, CONNECTIONS_DROPPED,
-    CONNECTIONS_HANDLED, CONNECTION_DURATION, PAYLOAD_THROTTLED_COUNT, SERVICE_DISCOVERY_DURATION,
+    CONNECTIONS_HANDLED, CONNECTION_DURATION, EVENT_THROTTLED_COUNT, SERVICE_DISCOVERY_DURATION,
     TOTAL_CONNECTING_DURATION,
 };
 use crate::inner::model::adapter_info::AdapterInfo;
@@ -339,7 +339,7 @@ impl PeripheralManager {
 
 impl PeripheralManager {
     async fn block_on_polling(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
-        info!("Polling {ctx}");
+        info!("Polling {} {ctx}", self.adapter_info);
 
         let CharacteristicConfig::Poll {
             delay_sec,
@@ -496,8 +496,8 @@ impl PeripheralManager {
             });
         }
 
-        info!(
-            "Still connected peripherals: {:?}",
+        warn!(
+            "Device disconnected: {peripheral_key}; still connected peripherals: {:?}",
             self.get_all_subscribed_peripherals().await
         );
     }
@@ -564,12 +564,11 @@ impl PeripheralManager {
                     tokio::spawn(async move {
                         CONNECTIONS_DROPPED.increment(1, metric_labels);
                         peripheral_manager.handle_disconnect(&peripheral_key).await;
-                        warn!("Device disconnected: {peripheral_key}");
                     });
                 }
                 _ => {
                     if limiter.throttle(peripheral_key.clone()).await {
-                        PAYLOAD_THROTTLED_COUNT.increment(1, metric_labels);
+                        EVENT_THROTTLED_COUNT.increment(1, metric_labels);
                         continue;
                     };
 
