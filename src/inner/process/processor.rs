@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
+use log::debug;
+use metrics::Label;
+
 use crate::inner::metrics::PAYLOAD_PROCESSED_COUNT;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::process::ProcessPayload;
-use log::debug;
-use metrics::counter;
-use std::sync::Arc;
 
 pub(crate) struct PayloadProcessor {
     receiver: kanal::Receiver<CharacteristicPayload>,
@@ -23,9 +25,17 @@ impl PayloadProcessor {
     pub(crate) fn block_on_receiving(self: Arc<Self>) {
         let receiver = self.receiver.clone();
         for (index, payload) in receiver.enumerate() {
-            let peripheral_address = payload.fqcn.peripheral_address.to_string();
+            let metric_labels = [
+                Label::new("scope", "processing"),
+                Label::new("peripheral", payload.fqcn.peripheral_address.to_string()),
+                Label::new("service", payload.fqcn.service_uuid.to_string()),
+                Label::new(
+                    "characteristic",
+                    payload.fqcn.characteristic_uuid.to_string(),
+                ),
+            ];
             self.process(payload);
-            counter!(PAYLOAD_PROCESSED_COUNT.metric_name, 1, "scope" => "processing", "peripheral" => peripheral_address);
+            PAYLOAD_PROCESSED_COUNT.increment(1, metric_labels);
             if index % 10000 == 0 {
                 debug!("Processed {index} payloads");
             }

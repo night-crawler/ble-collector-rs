@@ -34,6 +34,7 @@ use crate::inner::model::peripheral_key::PeripheralKey;
 pub(crate) struct PeripheralManager {
     pub(crate) adapter: Arc<Adapter>,
     peripheral_cache: Arc<Cache<BDAddr, Arc<Peripheral>>>,
+    peripheral_cache_updated_at: Mutex<std::time::Instant>,
     cache_monitor: JoinHandle<()>,
     poll_handle_map: Arc<Mutex<HashMap<Arc<Fqcn>, JoinHandle<()>>>>,
     subscription_map: Arc<Mutex<HashMap<BDAddr, JoinHandle<()>>>>,
@@ -91,6 +92,9 @@ impl PeripheralManager {
 
         Self {
             adapter: Arc::new(adapter),
+            peripheral_cache_updated_at: Mutex::new(
+                std::time::Instant::now() - app_conf.peripheral_cache_ttl,
+            ),
             adapter_info,
             peripheral_cache: cache,
             cache_monitor: monitor,
@@ -114,17 +118,24 @@ impl PeripheralManager {
         address: &BDAddr,
     ) -> CollectorResult<Option<Arc<Peripheral>>> {
         match self.get_cached_peripheral(address).await {
-            None => self.populate_cache().await?,
+            None => self.populate_cache(address).await?,
             existing => return Ok(existing),
         }
         Ok(self.get_cached_peripheral(address).await)
     }
 
-    pub(crate) async fn populate_cache(&self) -> CollectorResult<()> {
+    pub(crate) async fn populate_cache(&self, address: &BDAddr) -> CollectorResult<()> {
+        let mut update_at = self.peripheral_cache_updated_at.lock().await;
+        if update_at.elapsed() < self.app_conf.peripheral_cache_ttl {
+            return Ok(());
+        }
+        *update_at = std::time::Instant::now();
+
         info!(
-            "Populating peripheral cache for adapter {}",
+            "Populating peripheral cache for adapter {} (cache miss address: {address})",
             self.adapter_info
         );
+
         for peripheral in self.adapter.peripherals().await? {
             let metric_labels = [
                 Label::new("scope", "discovery"),
