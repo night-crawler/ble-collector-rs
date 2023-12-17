@@ -148,7 +148,6 @@ impl AdapterManager {
 
         let intermediate_result: Vec<Arc<Mutex<AdapterDto>>> = stream::iter(flatten_iter)
             .map(|(adapter_dto, peripheral)| async move {
-                peripheral.discover_services().await?;
                 {
                     let dto = PeripheralDto::from_platform(peripheral).await?;
                     let mut adapter_dto = adapter_dto.lock().await;

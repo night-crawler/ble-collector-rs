@@ -17,7 +17,7 @@ impl AdapterInfo {
 
 impl Display for AdapterInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.id)
+        write!(f, "{}[{}]", self.id, self.modalias)
     }
 }
 

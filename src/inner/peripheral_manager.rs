@@ -121,8 +121,16 @@ impl PeripheralManager {
     }
 
     pub(crate) async fn populate_cache(&self) -> CollectorResult<()> {
+        info!("Populating peripheral cache for adapter {}", self.adapter_info);
         for peripheral in self.adapter.peripherals().await? {
-            peripheral.discover_services().await?;
+            let metric_labels = [
+                Label::new("scope", "discovery"),
+                Label::new("peripheral", peripheral.address().to_string()),
+                self.adapter_info.adapter_label(),
+            ];
+            SERVICE_DISCOVERY_DURATION
+                .measure_ms(metric_labels.clone(), || peripheral.discover_services())
+                .await?;
             self.peripheral_cache
                 .insert(
                     peripheral.address(),
@@ -177,12 +185,6 @@ impl PeripheralManager {
                 .await?;
             info!("Connected to peripheral {peripheral_key}");
         }
-
-        info!("Discovering services for {peripheral_key}");
-        SERVICE_DISCOVERY_DURATION
-            .measure_ms(metric_labels.clone(), || peripheral.discover_services())
-            .await?;
-        info!("Discovered services for {peripheral_key}");
 
         for characteristic in peripheral
             .services()
@@ -422,7 +424,6 @@ impl PeripheralManager {
                 .await?;
         }
 
-        peripheral.discover_services().await?;
         let service = peripheral
             .services()
             .into_iter()
