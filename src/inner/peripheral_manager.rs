@@ -229,7 +229,7 @@ impl PeripheralManager {
 
     async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
         let fqcn = ctx.fqcn.clone();
-        let metric_labels = [
+        let mut metric_labels = vec![
             Label::new("scope", "subscription"),
             self.adapter_info.adapter_label(),
             fqcn.peripheral_label(),
@@ -239,6 +239,7 @@ impl PeripheralManager {
         match ctx.characteristic_config.as_ref() {
             CharacteristicConfig::Subscribe { .. } => {
                 self.subscribe(&ctx).await?;
+                metric_labels.push(Label::new("type", "subscribe"));
                 self.subscription_map
                     .lock()
                     .await
@@ -257,6 +258,7 @@ impl PeripheralManager {
                     });
             }
             CharacteristicConfig::Poll { .. } => {
+                metric_labels.push(Label::new("type", "poll"));
                 self.poll_handle_map
                     .lock()
                     .await
