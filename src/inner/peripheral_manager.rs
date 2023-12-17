@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
@@ -487,17 +487,6 @@ impl PeripheralManager {
         Ok(())
     }
 
-    pub(crate) async fn num_connected_devices(&self) -> usize {
-        let poll_handle_map = self.poll_handle_map.lock().await;
-        let subscription_map = self.subscription_map.lock().await;
-
-        let mut addresses = HashSet::new();
-        addresses.extend(poll_handle_map.keys().map(|fqcn| fqcn.peripheral_address));
-        addresses.extend(subscription_map.keys());
-
-        addresses.len()
-    }
-
     pub(crate) async fn handle_disconnect(&self, peripheral_key: &PeripheralKey) {
         {
             let mut poll_handle_map = self.poll_handle_map.lock().await;
@@ -586,7 +575,7 @@ impl PeripheralManager {
             ];
 
             CONNECTED_PERIPHERALS.value(
-                self.num_connected_devices().await as f64,
+                self.get_all_subscribed_peripherals().await.len() as f64,
                 [
                     Label::new("scope", "discovery"),
                     peripheral_key.adapter_label(),
