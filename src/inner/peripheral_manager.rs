@@ -182,6 +182,7 @@ impl PeripheralManager {
         SERVICE_DISCOVERY_DURATION
             .measure_ms(metric_labels.clone(), || peripheral.discover_services())
             .await?;
+        info!("Discovered services for {peripheral_key}");
 
         for characteristic in peripheral
             .services()
