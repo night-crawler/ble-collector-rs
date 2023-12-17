@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
@@ -502,7 +502,7 @@ impl PeripheralManager {
         );
     }
 
-    async fn get_all_subscribed_peripherals(&self) -> Vec<BDAddr> {
+    async fn get_all_subscribed_peripherals(&self) -> BTreeSet<BDAddr> {
         let poll_handle_map = self.poll_handle_map.lock().await;
         let subscription_map = self.subscription_map.lock().await;
         let subscribed_characteristic = self.subscribed_characteristics.lock().await;
