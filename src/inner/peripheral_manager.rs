@@ -121,7 +121,10 @@ impl PeripheralManager {
     }
 
     pub(crate) async fn populate_cache(&self) -> CollectorResult<()> {
-        info!("Populating peripheral cache for adapter {}", self.adapter_info);
+        info!(
+            "Populating peripheral cache for adapter {}",
+            self.adapter_info
+        );
         for peripheral in self.adapter.peripherals().await? {
             let metric_labels = [
                 Label::new("scope", "discovery"),
