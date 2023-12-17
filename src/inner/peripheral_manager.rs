@@ -327,7 +327,11 @@ impl PeripheralManager {
 
         ctx.peripheral.subscribe(&ctx.characteristic).await?;
 
-        info!("Subscribed to {} {ctx}", self.adapter_info);
+        info!(
+            "Subscribed to {} {ctx}; existing connections: {:?}",
+            self.adapter_info,
+            self.get_all_subscribed_peripherals().await
+        );
 
         Ok(())
     }
