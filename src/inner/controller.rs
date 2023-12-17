@@ -6,8 +6,8 @@ use rocket::{get, post};
 
 use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::batch_executor::execute_batches;
-use crate::inner::conf::flat::FlatPeripheralConfig;
 use crate::inner::conf::manager::ConfigurationManager;
+use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
 use crate::inner::dto::{
     AdapterDto, AdapterInfoDto, Envelope, PeripheralIoRequestDto, PeripheralIoResponseDto,
 };

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::inner::conf::dto::service::ServiceConfigDto;
-use crate::inner::conf::parse::Filter;
+use crate::inner::conf::model::filter::Filter;
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]

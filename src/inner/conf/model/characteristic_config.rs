@@ -3,16 +3,13 @@ use std::time::Duration;
 
 use crate::inner::conf::dto::characteristic::{CharacteristicConfigDto, PublishMetricConfigDto};
 use crate::inner::conf::dto::service::ServiceConfigDto;
-use regex::Regex;
+use crate::inner::conv::converter::Converter;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::DurationSeconds;
 use uuid::Uuid;
 
-use crate::inner::conf::flat::FlatPeripheralConfig;
-use crate::inner::conv::converter::Converter;
 use crate::inner::error::CollectorError;
-use crate::inner::model::peripheral_key::PeripheralKey;
 
 #[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -117,73 +114,5 @@ impl CharacteristicConfig {
                 publish_metrics, ..
             } => publish_metrics.as_ref(),
         }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum Filter {
-    Contains(String),
-    StartsWith(String),
-    EndsWith(String),
-    Equals(String),
-    NotEquals(String),
-    #[serde(with = "serde_regex")]
-    Regex(Regex),
-}
-
-impl PartialEq<Self> for Filter {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Filter::Contains(left), Filter::Contains(right)) => left == right,
-            (Filter::StartsWith(left), Filter::StartsWith(right)) => left == right,
-            (Filter::EndsWith(left), Filter::EndsWith(right)) => left == right,
-            (Filter::Equals(left), Filter::Equals(right)) => left == right,
-            (Filter::NotEquals(left), Filter::NotEquals(right)) => left == right,
-            (Filter::Regex(left), Filter::Regex(right)) => left.as_str() == right.as_str(),
-            _ => false,
-        }
-    }
-}
-
-impl Eq for Filter {}
-
-pub(crate) trait Evaluate<S, R> {
-    fn evaluate(&self, source: S) -> R;
-}
-
-impl Evaluate<&str, bool> for Filter {
-    fn evaluate(&self, source: &str) -> bool {
-        match self {
-            Filter::Contains(value) => source.contains(value),
-            Filter::StartsWith(value) => source.starts_with(value),
-            Filter::EndsWith(value) => source.ends_with(value),
-            Filter::Equals(value) => source == value,
-            Filter::NotEquals(value) => source != value,
-            Filter::Regex(value) => value.is_match(source),
-        }
-    }
-}
-
-impl Evaluate<&PeripheralKey, bool> for FlatPeripheralConfig {
-    fn evaluate(&self, source: &PeripheralKey) -> bool {
-        let adapter_matches = self
-            .adapter
-            .as_ref()
-            .map(|filter| filter.evaluate(&source.adapter_id))
-            .unwrap_or(true);
-        let device_id_matches = self
-            .device_id
-            .as_ref()
-            .map(|filter| filter.evaluate(&source.peripheral_address.to_string()))
-            .unwrap_or(true);
-
-        let name_matches = match (self.device_name.as_ref(), &source.name) {
-            (Some(filter), Some(name)) => filter.evaluate(name),
-            (None, Some(_)) => true,
-            (Some(_), None) => false,
-            (None, None) => true,
-        };
-
-        adapter_matches && device_id_matches && name_matches
     }
 }

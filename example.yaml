@@ -1,7 +1,7 @@
 peripherals:
   - name: 'Sensor Hub'
     device_name: !StartsWith 'Sensor Hub'
-#    device_id: !Equals 'FA:6F:EC:EE:4B:36'
+    adapter: !Equals 'hci0'
     services:
       - uuid: '0000180a-0000-1000-8000-00805f9b34fb'
         name: 'Device Information'
@@ -14,15 +14,22 @@ peripherals:
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
             publish_metrics:
               metric_type: Gauge
-              name: 'battery_voltage'
-              description: 'Sensor Hub battery voltage'
-              unit: "Volt"
+              name: 'sensor_hub_device_information_battery_voltage_volts'
+              description: 'Sensor Hub Battery Voltage'
+              unit: 'Volt'
               labels:
-                - ['scope', 'power']
+                - [ 'scope', 'device' ]
           - !Subscribe
             name: 'Temperature'
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
             converter: !Signed { l: 2, m: 1, d: -2, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_device_information_temperature_degrees_celsius'
+              description: 'Sensor Hub Chip Temperature'
+              unit: 'Degrees Celsius'
+              labels:
+                - [ 'scope', 'device' ]
           - !Subscribe
             name: 'Debug'
             uuid: '00002bde-0000-1000-8000-00805f9b34fb'
@@ -31,6 +38,13 @@ peripherals:
             name: 'Timeout'
             uuid: 'a0e4d2ba-0002-8000-8789-00805f9b34fb'
             converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_device_information_timeout_milliseconds'
+              description: 'Sensor Hub Update Timeout'
+              unit: 'Millisecond'
+              labels:
+                - [ 'scope', 'device' ]
       - uuid: '5c853275-723b-4754-a329-969d4bc8121e'
         name: 'BME280'
         default_delay: 60s
@@ -40,30 +54,79 @@ peripherals:
             name: 'Temperature'
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
             converter: !Signed { l: 2, m: 1, d: -2, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_bme280_temperature_degrees_celsius'
+              description: 'Sensor Hub BME280 Temperature'
+              unit: 'Degrees Celsius'
+              labels:
+                - [ 'scope', 'bme280' ]
           - !Subscribe
             name: 'Pressure'
             uuid: '00002a6d-0000-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 4, m: 1, d: -1, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_bme280_pressure_pa'
+              description: 'Sensor Hub BME280 Pressure'
+              unit: 'Pascal'
+              labels:
+                - [ 'scope', 'bme280' ]
           - !Subscribe
             name: 'Humidity'
             uuid: '00002a6f-0000-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: -2, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_bme280_humidity_percent'
+              description: 'Sensor Hub BME280 Humidity'
+              unit: 'Percent'
+              labels:
+                - [ 'scope', 'bme280' ]
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
             converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_bme280_timeout_milliseconds'
+              description: 'Sensor Hub BME280 Update Timeout'
+              unit: 'Millisecond'
+              labels:
+                - [ 'scope', 'bme280' ]
           - !Poll
             name: 'Humidity Offset'
             uuid: 'a0e4a2ba-1234-4321-0001-00805f9b34fb'
             converter: !F32
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_bme280_humidity_offset_percent'
+              description: 'Sensor Hub BME280 Humidity Offset'
+              unit: 'Percent'
+              labels:
+                - [ 'scope', 'bme280' ]
           - !Poll
             name: 'Temperature Offset'
             uuid: 'a0e4a2ba-1234-4321-0002-00805f9b34fb'
             converter: !F32
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_bme280_temperature_offset_degrees_celsius'
+              description: 'Sensor Hub BME280 Temperature Offset'
+              unit: 'Celsius'
+              labels:
+                - [ 'scope', 'bme280' ]
           - !Poll
             name: 'Pressure Offset'
             uuid: 'a0e4a2ba-1234-4321-0003-00805f9b34fb'
             converter: !F32
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_bme280_pressure_offset_pa'
+              description: 'Sensor Hub BME280 Pressure Offset'
+              unit: 'Pascal'
+              labels:
+                - [ 'scope', 'bme280' ]
       - uuid: '5c853275-823b-4754-a329-969d4bc8121e'
         name: LIS2DH12
         default_delay: 60s
@@ -73,18 +136,46 @@ peripherals:
             name: 'X-Axis Acceleration'
             uuid: 'eaeaeaea-0000-0000-0000-00805f9b34fb'
             converter: !F32
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_lis2dh12_x_ms2'
+              description: 'Sensor Hub LIS2DH12 X-Axis Acceleration'
+              unit: 'm/s^2'
+              labels:
+                - [ 'scope', 'lis2dh12' ]
           - !Subscribe
             name: 'Y-Axis Acceleration'
             uuid: 'eaeaeaea-0000-1000-0000-00805f9b34fb'
             converter: !F32
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_lis2dh12_y_ms2'
+              description: 'Sensor Hub LIS2DH12 Y-Axis Acceleration'
+              unit: 'm/s^2'
+              labels:
+                - [ 'scope', 'lis2dh12' ]
           - !Subscribe
             name: 'Z-Axis Acceleration'
             uuid: 'eaeaeaea-0000-2000-0000-00805f9b34fb'
             converter: !F32
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_lis2dh12_z_ms2'
+              description: 'Sensor Hub LIS2DH12 Z-Axis Acceleration'
+              unit: 'm/s^2'
+              labels:
+                - [ 'scope', 'lis2dh12' ]
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
             converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_lis2dh12_timeout_milliseconds'
+              description: 'Sensor Hub LIS2DH12 Update Timeout'
+              unit: 'Millisecond'
+              labels:
+                - [ 'scope', 'lis2dh12' ]
       - uuid: '5c853275-723b-4754-a329-969d8bc8121d'
         name: 'ADC'
         default_delay: 60s
@@ -94,42 +185,112 @@ peripherals:
             name: 'Voltage 0'
             uuid: '00002b18-0000-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_voltage_0_volts'
+              description: 'Sensor Hub ADC Voltage 0'
+              unit: 'Volt'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Subscribe
             name: 'Voltage 1'
             uuid: '00002b18-0001-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_voltage_1_volts'
+              description: 'Sensor Hub ADC Voltage 1'
+              unit: 'Volt'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Subscribe
             name: 'Voltage 2'
             uuid: '00002b18-0002-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_voltage_2_volts'
+              description: 'Sensor Hub ADC Voltage 2'
+              unit: 'Volt'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Subscribe
             name: 'Voltage 3'
             uuid: '00002b18-0003-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_voltage_3_volts'
+              description: 'Sensor Hub ADC Voltage 3'
+              unit: 'Volt'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Subscribe
             name: 'Voltage 4'
             uuid: '00002b18-0004-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_voltage_4_volts'
+              description: 'Sensor Hub ADC Voltage 4'
+              unit: 'Volt'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Subscribe
             name: 'Voltage 5'
             uuid: '00002b18-0005-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_voltage_5_volts'
+              description: 'Sensor Hub ADC Voltage 5'
+              unit: 'Volt'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Subscribe
             name: 'Voltage 6'
             uuid: '00002b18-0006-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_voltage_6_volts'
+              description: 'Sensor Hub ADC Voltage 6'
+              unit: 'Volt'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Subscribe
             name: 'Samples'
             uuid: 'A0E4D2BA-0000-8000-0000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: -6 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_samples'
+              description: 'Sensor Hub ADC Samples'
+              unit: 'Sample'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Subscribe
             name: 'Elapsed Time'
             uuid: 'A0E4D2BA-0001-8000-0000-00805f9b34fb'
             converter: !Unsigned { l: 8, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_elapsed_us'
+              description: 'Sensor Hub ADC Elapsed Time'
+              unit: 'Microsecond'
+              labels:
+                - [ 'scope', 'adc' ]
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4d2ba-0002-8000-0000-00805f9b34fb'
             converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_nrf_adc_timeout_milliseconds'
+              description: 'Sensor Hub ADC Update Timeout'
+              unit: 'Millisecond'
+              labels:
+                - [ 'scope', 'adc' ]
       - uuid: '5c853275-923b-4754-a329-969d4bc8121e'
         name: 'VEML6040'
         default_delay: 60s
@@ -139,27 +300,76 @@ peripherals:
             name: 'Red Color Intensity'
             uuid: 'ebbbbaea-a000-0000-0000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_veml6040_red_raw'
+              description: 'Sensor Hub VEML6040 Red Color Intensity'
+              unit: 'Raw'
+              labels:
+                - [ 'scope', 'veml6040' ]
           - !Subscribe
             name: 'Green Color Intensity'
             uuid: 'eaeaeaea-b000-1000-0000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_veml6040_green_raw'
+              description: 'Sensor Hub VEML6040 Green Color Intensity'
+              unit: 'Raw'
+              labels:
+                - [ 'scope', 'veml6040' ]
           - !Subscribe
             name: 'Blue Color Intensity'
             uuid: 'eaeaeaea-c000-2000-0000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_veml6040_blue_raw'
+              description: 'Sensor Hub VEML6040 Blue Color Intensity'
+              unit: 'Raw'
+              labels:
+                - [ 'scope', 'veml6040' ]
           - !Subscribe
             name: 'White Color Intensity'
             uuid: 'eaeaeaea-d000-3000-0000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_veml6040_white_raw'
+              description: 'Sensor Hub VEML6040 White Color Intensity'
+              unit: 'Raw'
+              labels:
+                - [ 'scope', 'veml6040' ]
           - !Subscribe
             name: 'Correlated Color Temperature'
             uuid: '00002AE9-0000-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_veml6040_cct_kelvin'
+              description: 'Sensor Hub VEML6040 Correlated Color Temperature'
+              unit: 'Kelvin'
+              labels:
+                - [ 'scope', 'veml6040' ]
           - !Subscribe
             name: 'Luminous Flux'
             uuid: '00002AFF-0000-1000-8000-00805f9b34fb'
             converter: !Unsigned { l: 2, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_veml6040_lux_lumen'
+              description: 'Sensor Hub VEML6040 Luminous Flux'
+              unit: 'Lumen'
+              labels:
+                - [ 'scope', 'veml6040' ]
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
             converter: !Unsigned { l: 4, m: 1, d: 0, b: 0 }
+            publish_metrics:
+              metric_type: Gauge
+              name: 'sensor_hub_veml6040_timeout_milliseconds'
+              description: 'Sensor Hub VEML6040 Update Timeout'
+              unit: 'Millisecond'
+              labels:
+                - [ 'scope', 'veml6040' ]

@@ -1,21 +1,14 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
-use std::sync::Arc;
-
-use btleplug::api::Characteristic;
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
 use crate::inner::conf::dto::peripheral::PeripheralConfigDto;
 use crate::inner::conf::dto::service::ServiceConfigDto;
-use crate::inner::conf::parse::{CharacteristicConfig, Filter};
+use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
+use crate::inner::conf::model::filter::Filter;
+use crate::inner::conf::model::service_characteristic_key::ServiceCharacteristicKey;
+use crate::inner::conf::traits::Evaluate;
 use crate::inner::error::{CollectorError, CollectorResult};
-
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
-pub(crate) struct ServiceCharacteristicKey {
-    pub(crate) service_uuid: Uuid,
-    pub(crate) characteristic_uuid: Uuid,
-}
+use crate::inner::model::peripheral_key::PeripheralKey;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct FlatPeripheralConfig {
@@ -25,21 +18,6 @@ pub(crate) struct FlatPeripheralConfig {
     pub(crate) device_name: Option<Filter>,
 
     pub(crate) service_map: HashMap<ServiceCharacteristicKey, Arc<CharacteristicConfig>>,
-}
-
-impl From<&Characteristic> for ServiceCharacteristicKey {
-    fn from(value: &Characteristic) -> Self {
-        Self {
-            service_uuid: value.service_uuid,
-            characteristic_uuid: value.uuid,
-        }
-    }
-}
-
-impl Display for ServiceCharacteristicKey {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.service_uuid, self.characteristic_uuid)
-    }
 }
 
 impl FlatPeripheralConfig {
@@ -90,5 +68,29 @@ impl TryFrom<PeripheralConfigDto> for FlatPeripheralConfig {
         }
 
         Ok(flat_conf)
+    }
+}
+
+impl Evaluate<&PeripheralKey, bool> for FlatPeripheralConfig {
+    fn evaluate(&self, source: &PeripheralKey) -> bool {
+        let adapter_matches = self
+            .adapter
+            .as_ref()
+            .map(|filter| filter.evaluate(&source.adapter_id))
+            .unwrap_or(true);
+        let device_id_matches = self
+            .device_id
+            .as_ref()
+            .map(|filter| filter.evaluate(&source.peripheral_address.to_string()))
+            .unwrap_or(true);
+
+        let name_matches = match (self.device_name.as_ref(), &source.name) {
+            (Some(filter), Some(name)) => filter.evaluate(name),
+            (None, Some(_)) => true,
+            (Some(_), None) => false,
+            (None, None) => true,
+        };
+
+        adapter_matches && device_id_matches && name_matches
     }
 }

@@ -15,9 +15,10 @@ use tokio::sync::Mutex;
 use tokio::task::{JoinHandle, JoinSet};
 
 use crate::inner::conf::cmd_args::AppConf;
-use crate::inner::conf::flat::{FlatPeripheralConfig, ServiceCharacteristicKey};
 use crate::inner::conf::manager::ConfigurationManager;
-use crate::inner::conf::parse::CharacteristicConfig;
+use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
+use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
+use crate::inner::conf::model::service_characteristic_key::ServiceCharacteristicKey;
 use crate::inner::debounce_limiter::DebounceLimiter;
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::metrics::{

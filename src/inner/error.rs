@@ -1,8 +1,8 @@
+use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
+use crate::inner::conf::model::service_characteristic_key::ServiceCharacteristicKey;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::inner::conf::flat::ServiceCharacteristicKey;
-use crate::inner::conf::parse::CharacteristicConfig;
 use crate::inner::conv::converter::ConversionError;
 
 #[derive(Debug, thiserror::Error)]

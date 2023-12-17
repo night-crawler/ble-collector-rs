@@ -1,4 +1,4 @@
-use crate::inner::conf::parse::CharacteristicConfig;
+use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::model::fqcn::Fqcn;
 use chrono::Utc;

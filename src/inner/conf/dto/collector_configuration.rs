@@ -14,7 +14,7 @@ mod tests {
         CharacteristicConfigDto, PublishMetricConfigDto,
     };
     use crate::inner::conf::dto::service::ServiceConfigDto;
-    use crate::inner::conf::parse::Filter;
+    use crate::inner::conf::model::filter::Filter;
     use crate::inner::metrics::MetricType;
     use std::sync::Arc;
     use std::time::Duration;
