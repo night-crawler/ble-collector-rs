@@ -48,4 +48,8 @@ impl PeripheralKey {
     pub(crate) fn peripheral_label(&self) -> Label {
         Label::new("peripheral", self.peripheral_address.to_string())
     }
+
+    pub(crate) fn adapter_label(&self) -> Label {
+        Label::new("adapter", self.adapter_id.clone())
+    }
 }

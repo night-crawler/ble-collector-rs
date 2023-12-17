@@ -11,8 +11,9 @@ use log::{info, warn};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
-use crate::inner::dto::{AdapterDto, AdapterInfoDto, PeripheralDto};
+use crate::inner::dto::{AdapterDto, PeripheralDto};
 use crate::inner::error::{CollectorError, CollectorResult};
+use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::peripheral_manager::PeripheralManager;
 
@@ -42,21 +43,24 @@ impl AdapterManager {
         info!("Discovered {} adapter(s)", adapters.len());
         for adapter in adapters {
             info!("Discovered adapter: {:?}", adapter);
-            self.add_adapter(adapter).await;
+            self.add_adapter(adapter).await?;
         }
         Ok(())
     }
 
-    async fn add_adapter(&self, adapter: Adapter) {
+    async fn add_adapter(&self, adapter: Adapter) -> CollectorResult<()> {
+        let adapter_info = AdapterInfo::try_from(adapter.adapter_info().await?)?;
         self.peripheral_managers
             .lock()
             .await
             .push(Arc::new(PeripheralManager::new(
                 adapter,
+                adapter_info,
                 self.payload_sender.clone(),
                 self.configuration_manager.clone(),
                 Arc::clone(&self.app_conf),
             )));
+        Ok(())
     }
 
     pub(crate) async fn get_peripheral_manager(
@@ -67,7 +71,7 @@ impl AdapterManager {
 
         for manager in managers.iter() {
             let adapter_info = manager.adapter.adapter_info().await?;
-            let adapter_info = AdapterInfoDto::try_from(adapter_info)?;
+            let adapter_info = AdapterInfo::try_from(adapter_info)?;
             if adapter_info.id == adapter_id {
                 return Ok(Some(Arc::clone(manager)));
             }
@@ -89,7 +93,7 @@ impl AdapterManager {
         Ok(())
     }
 
-    pub(crate) async fn list_adapters(&self) -> CollectorResult<Vec<AdapterInfoDto>> {
+    pub(crate) async fn list_adapters(&self) -> CollectorResult<Vec<AdapterInfo>> {
         let managers = self.peripheral_managers.lock().await;
 
         let infos = stream::iter(managers.iter())
@@ -105,7 +109,7 @@ impl AdapterManager {
 
         for info in infos {
             let info = info?;
-            let adapter_info = AdapterInfoDto::try_from(info)?;
+            let adapter_info = AdapterInfo::try_from(info)?;
             adapters.push(adapter_info);
         }
 

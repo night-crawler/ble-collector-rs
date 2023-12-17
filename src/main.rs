@@ -149,7 +149,7 @@ async fn main() -> CollectorResult<()> {
     });
 
     if let Some(result) = join_set.join_next().await {
-        info!("Ending everything: {result:?}");
+        info!("Main has ended: {result:?}");
     }
 
     Ok(())

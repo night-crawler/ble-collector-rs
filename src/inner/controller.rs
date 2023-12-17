@@ -1,6 +1,6 @@
-use metrics_exporter_prometheus::PrometheusHandle;
 use std::sync::Arc;
 
+use metrics_exporter_prometheus::PrometheusHandle;
 use rocket::http::Status;
 use rocket::{get, post};
 
@@ -8,11 +8,10 @@ use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::batch_executor::execute_batches;
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
-use crate::inner::dto::{
-    AdapterDto, AdapterInfoDto, Envelope, PeripheralIoRequestDto, PeripheralIoResponseDto,
-};
+use crate::inner::dto::{AdapterDto, Envelope, PeripheralIoRequestDto, PeripheralIoResponseDto};
 use crate::inner::error::CollectorError;
 use crate::inner::http_error::{ApiResult, HttpError};
+use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::process::api_publisher::ApiPublisher;
 
 #[get("/adapters/describe")]
@@ -26,7 +25,7 @@ pub(crate) async fn describe_adapters(
 #[get("/adapters")]
 pub(crate) async fn list_adapters(
     adapter_manager: &rocket::State<Arc<AdapterManager>>,
-) -> ApiResult<Vec<AdapterInfoDto>> {
+) -> ApiResult<Vec<AdapterInfo>> {
     let wrapped = Envelope::from(adapter_manager.list_adapters().await?);
     Ok(wrapped.into())
 }

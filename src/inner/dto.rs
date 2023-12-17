@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
 
+use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::model::fqcn::Fqcn;
-use anyhow::Context;
 use bounded_integer::BoundedUsize;
 use btleplug::api::{
     BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service, WriteType,
@@ -25,28 +25,8 @@ impl<T> From<T> for Envelope<T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct AdapterInfoDto {
-    pub(crate) id: String,
-    pub(crate) modalias: String,
-}
-
-impl TryFrom<String> for AdapterInfoDto {
-    type Error = anyhow::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        let mut pair = value.split_whitespace();
-        let id = pair.next().context("No id")?.to_string();
-        let modalias = pair.next().context("No modalias")?.trim();
-        let modalias = modalias.strip_prefix('(').unwrap_or(modalias);
-        let modalias = modalias.strip_suffix(')').unwrap_or(modalias);
-        let modalias = modalias.to_string();
-        Ok(Self { id, modalias })
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct AdapterDto {
-    pub(crate) adapter_info: AdapterInfoDto,
+    pub(crate) adapter_info: AdapterInfo,
     pub(crate) peripherals: Vec<PeripheralDto>,
 }
 
@@ -194,7 +174,7 @@ impl TryFrom<String> for AdapterDto {
     type Error = anyhow::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let adapter_info = AdapterInfoDto::try_from(value)?;
+        let adapter_info = AdapterInfo::try_from(value)?;
         Ok(Self {
             adapter_info,
             peripherals: vec![],
