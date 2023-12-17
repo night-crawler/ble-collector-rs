@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +28,7 @@ use crate::inner::metrics::{
 };
 use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
+use crate::inner::model::connected_peripherals::ConnectedPeripherals;
 use crate::inner::model::fqcn::Fqcn;
 use crate::inner::model::peripheral_key::PeripheralKey;
 
@@ -360,9 +361,9 @@ impl PeripheralManager {
         ctx.peripheral.subscribe(&ctx.characteristic).await?;
 
         info!(
-            "Subscribed to {} {ctx}; existing connections: {:?}",
+            "Subscribed to {} {ctx}; existing connections: {}",
             self.adapter_info,
-            self.get_all_subscribed_peripherals().await
+            self.get_all_connected_peripherals().await
         );
 
         Ok(())
@@ -519,26 +520,27 @@ impl PeripheralManager {
         }
 
         warn!(
-            "Device disconnected: {peripheral_key}; still connected peripherals: {:?}",
-            self.get_all_subscribed_peripherals().await
+            "Device disconnected: {peripheral_key}; still connected peripherals: {}",
+            self.get_all_connected_peripherals().await
         );
     }
 
-    async fn get_all_subscribed_peripherals(&self) -> BTreeSet<BDAddr> {
+    async fn get_all_connected_peripherals(&self) -> ConnectedPeripherals {
         let poll_handle_map = self.poll_handle_map.lock().await;
         let subscription_map = self.subscription_map.lock().await;
         let subscribed_characteristic = self.subscribed_characteristics.lock().await;
 
-        poll_handle_map
-            .keys()
-            .map(|fqcn| fqcn.peripheral_address)
-            .chain(subscription_map.keys().cloned())
-            .chain(
-                subscribed_characteristic
-                    .keys()
-                    .map(|fqcn| fqcn.peripheral_address),
-            )
-            .collect()
+        ConnectedPeripherals {
+            poll: poll_handle_map
+                .keys()
+                .map(|fqcn| fqcn.peripheral_address)
+                .collect(),
+            subscribe: subscription_map.keys().cloned().collect(),
+            by_characteristic: subscribed_characteristic
+                .keys()
+                .map(|fqcn| fqcn.peripheral_address)
+                .collect(),
+        }
     }
 }
 
@@ -575,7 +577,7 @@ impl PeripheralManager {
             ];
 
             CONNECTED_PERIPHERALS.value(
-                self.get_all_subscribed_peripherals().await.len() as f64,
+                self.get_all_connected_peripherals().await.get_all().len() as f64,
                 [
                     Label::new("scope", "discovery"),
                     peripheral_key.adapter_label(),
