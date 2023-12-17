@@ -195,9 +195,19 @@ impl PeripheralManager {
         if !peripheral.is_connected().await? {
             info!("Connecting to peripheral {peripheral_key}");
             CONNECTING_DURATION
-                .measure_ms(metric_labels.clone(), || peripheral.connect())
-                .await?;
+                .measure_ms(metric_labels.clone(), || {
+                    tokio::time::timeout(Duration::from_secs(30), peripheral.connect())
+                })
+                .await??;
             info!("Connected to peripheral {peripheral_key}");
+        }
+
+        if peripheral.services().is_empty() {
+            info!("Forcing service discovery for peripheral {peripheral_key}");
+            SERVICE_DISCOVERY_DURATION
+                .measure_ms(metric_labels.clone(), || peripheral.discover_services())
+                .await?;
+            info!("Forced service discovery for peripheral {peripheral_key} completed");
         }
 
         for characteristic in peripheral
@@ -434,8 +444,10 @@ impl PeripheralManager {
         if !peripheral.is_connected().await? {
             info!("Connecting to {fqcn}");
             CONNECTING_DURATION
-                .measure_ms(metric_labels, || peripheral.connect())
-                .await?;
+                .measure_ms(metric_labels, || {
+                    tokio::time::timeout(Duration::from_secs(30), peripheral.connect())
+                })
+                .await??;
         }
 
         let service = peripheral
