@@ -171,12 +171,14 @@ impl PeripheralManager {
         ];
 
         if !peripheral.is_connected().await? {
+            info!("Connecting to peripheral {peripheral_key}");
             CONNECTING_DURATION
                 .measure_ms(metric_labels.clone(), || peripheral.connect())
                 .await?;
-            info!("Connected to {peripheral_key}");
+            info!("Connected to peripheral {peripheral_key}");
         }
 
+        info!("Discovering services for {peripheral_key}");
         SERVICE_DISCOVERY_DURATION
             .measure_ms(metric_labels.clone(), || peripheral.discover_services())
             .await?;
@@ -228,6 +230,7 @@ impl PeripheralManager {
     }
 
     async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
+        info!("Connecting to {} {ctx}", self.adapter_info);
         let fqcn = ctx.fqcn.clone();
         let mut metric_labels = vec![
             Label::new("scope", "subscription"),
