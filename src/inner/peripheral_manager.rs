@@ -554,7 +554,10 @@ impl PeripheralManager {
 
             CONNECTED_PERIPHERALS.value(
                 self.num_connected_devices().await as f64,
-                [&("scope", "discovery")],
+                [
+                    Label::new("scope", "discovery"),
+                    peripheral_key.adapter_label(),
+                ],
             );
 
             match event {
