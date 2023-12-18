@@ -34,8 +34,9 @@ fn init_logging() -> CollectorResult<()> {
         .warn(Color::Yellow);
     fern::Dispatch::new()
         .format(move |out, message, record| {
+            let line_number = record.line().map(|l| l.to_string()).unwrap_or("".to_string());
             out.finish(format_args!(
-                "[{} {} {}] {}",
+                "[{} {} {}:{line_number}] {}",
                 humantime::format_rfc3339_millis(std::time::SystemTime::now()),
                 colors.color(record.level()),
                 record.target(),
