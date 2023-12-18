@@ -257,6 +257,14 @@ impl PeripheralManager {
                 .await?;
         }
 
+        CONNECTED_PERIPHERALS.value(
+            self.get_all_connected_peripherals().await.get_all().len() as f64,
+            [
+                Label::new("scope", "discovery"),
+                peripheral_key.adapter_label(),
+            ],
+        );
+
         Ok(())
     }
 
@@ -622,14 +630,6 @@ impl PeripheralManager {
             peripheral_key.peripheral_label(),
             peripheral_key.adapter_label(),
         ];
-
-        CONNECTED_PERIPHERALS.value(
-            self.get_all_connected_peripherals().await.get_all().len() as f64,
-            [
-                Label::new("scope", "discovery"),
-                peripheral_key.adapter_label(),
-            ],
-        );
 
         EVENT_COUNT.increment(1, metric_labels.clone());
 
