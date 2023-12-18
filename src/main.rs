@@ -13,8 +13,8 @@ use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::controller::{
-    describe_adapters, get_collector_data, get_metrics, list_adapters, list_configurations,
-    read_write_characteristic,
+    describe_adapters, get_collector_data, get_connected_peripherals, get_metrics, list_adapters,
+    list_configurations, read_write_characteristic,
 };
 use crate::inner::error::CollectorResult;
 use crate::inner::metrics::describe_metrics;
@@ -133,6 +133,7 @@ async fn main() -> CollectorResult<()> {
                     get_collector_data,
                     list_adapters,
                     read_write_characteristic,
+                    get_connected_peripherals
                 ],
             )
             .mount("/", routes![get_metrics])

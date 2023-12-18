@@ -12,6 +12,7 @@ use crate::inner::dto::{AdapterDto, Envelope, PeripheralIoRequestDto, Peripheral
 use crate::inner::error::CollectorError;
 use crate::inner::http_error::{ApiResult, HttpError};
 use crate::inner::model::adapter_info::AdapterInfo;
+use crate::inner::model::connected_peripherals::ConnectedPeripherals;
 use crate::inner::process::api_publisher::ApiPublisher;
 
 #[get("/adapters/describe")]
@@ -59,6 +60,22 @@ pub(crate) async fn read_write_characteristic(
     };
     let response = execute_batches(peripheral_manager, request.into_inner()).await;
     Ok(Envelope::from(response).into())
+}
+
+#[get("/adapters/<adapter_id>/peripherals")]
+pub(crate) async fn get_connected_peripherals(
+    adapter_id: &str,
+    adapter_manager: &rocket::State<Arc<AdapterManager>>,
+) -> ApiResult<ConnectedPeripherals> {
+    let Some(peripheral_manager) = adapter_manager.get_peripheral_manager(adapter_id).await? else {
+        return Err(
+            HttpError::new(CollectorError::AdapterNotFound(adapter_id.to_string()))
+                .with_status(Status::NotFound),
+        );
+    };
+    let connected_peripherals = peripheral_manager.get_all_connected_peripherals().await;
+
+    Ok(Envelope::from(connected_peripherals).into())
 }
 
 #[get("/metrics")]

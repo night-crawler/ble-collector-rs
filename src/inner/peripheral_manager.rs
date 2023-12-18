@@ -541,7 +541,7 @@ impl PeripheralManager {
         );
     }
 
-    async fn get_all_connected_peripherals(&self) -> ConnectedPeripherals {
+    pub(crate) async fn get_all_connected_peripherals(&self) -> ConnectedPeripherals {
         let poll_handle_map = self.poll_handle_map.lock().await;
         let subscription_map = self.subscription_map.lock().await;
         let subscribed_characteristic = self.subscribed_characteristics.lock().await;

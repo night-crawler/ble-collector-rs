@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 
 use btleplug::api::BDAddr;
+use serde::Serialize;
 
+#[derive(Debug, Serialize)]
 pub(crate) struct ConnectedPeripherals {
     pub(crate) connection_map: BTreeMap<BDAddr, BTreeSet<&'static str>>,
 }
