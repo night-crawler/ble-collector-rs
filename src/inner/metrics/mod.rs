@@ -111,6 +111,13 @@ pub(crate) const PAYLOAD_PROCESSED_COUNT: StaticMetric = StaticMetric {
     metric_type: MetricType::Counter,
 };
 
+pub(crate) const EVENT_COUNT: StaticMetric = StaticMetric {
+    metric_name: "collector.event.count",
+    unit: Unit::Count,
+    description: "The number of received events",
+    metric_type: MetricType::Counter,
+};
+
 pub(crate) const EVENT_THROTTLED_COUNT: StaticMetric = StaticMetric {
     metric_name: "collector.event.throttled.count",
     unit: Unit::Count,
@@ -185,4 +192,5 @@ pub(crate) fn describe_metrics() {
     TOTAL_CONNECTING_DURATION.describe();
     CONNECTING_DURATION.describe();
     SERVICE_DISCOVERY_DURATION.describe();
+    EVENT_COUNT.describe();
 }

@@ -6,13 +6,14 @@ use std::time::Duration;
 use anyhow::Context;
 use btleplug::api::{BDAddr, Central, CentralEvent, Characteristic, Peripheral as _, ScanFilter};
 use btleplug::platform::{Adapter, Peripheral, PeripheralId};
-use futures_util::StreamExt;
+use futures_util::{stream, StreamExt};
 use kanal::AsyncSender;
 use log::{error, info, warn};
 use metrics::Label;
 use retainer::Cache;
 use tokio::sync::Mutex;
 use tokio::task::{JoinHandle, JoinSet};
+use tokio::time::timeout;
 
 use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::manager::ConfigurationManager;
@@ -23,8 +24,8 @@ use crate::inner::debounce_limiter::DebounceLimiter;
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::metrics::{
     CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTING_ERRORS, CONNECTIONS_DROPPED,
-    CONNECTIONS_HANDLED, CONNECTION_DURATION, EVENT_THROTTLED_COUNT, SERVICE_DISCOVERY_DURATION,
-    TOTAL_CONNECTING_DURATION,
+    CONNECTIONS_HANDLED, CONNECTION_DURATION, EVENT_COUNT, EVENT_THROTTLED_COUNT,
+    SERVICE_DISCOVERY_DURATION, TOTAL_CONNECTING_DURATION,
 };
 use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
@@ -137,24 +138,33 @@ impl PeripheralManager {
             self.adapter_info
         );
 
-        for peripheral in self.adapter.peripherals().await? {
-            let metric_labels = [
-                Label::new("scope", "discovery"),
-                Label::new("peripheral", peripheral.address().to_string()),
-                self.adapter_info.adapter_label(),
-            ];
-            SERVICE_DISCOVERY_DURATION
-                .measure_ms(metric_labels.clone(), || peripheral.discover_services())
-                .await?;
-            self.peripheral_cache
-                .insert(
-                    peripheral.address(),
-                    Arc::new(peripheral),
-                    self.app_conf.peripheral_cache_ttl,
-                )
-                .await;
-        }
+        let caching_results = stream::iter(self.adapter.peripherals().await?)
+            .map(|peripheral| async {
+                let metric_labels = [
+                    Label::new("scope", "discovery"),
+                    Label::new("peripheral", peripheral.address().to_string()),
+                    self.adapter_info.adapter_label(),
+                ];
+                SERVICE_DISCOVERY_DURATION
+                    .measure_ms(metric_labels.clone(), || peripheral.discover_services())
+                    .await?;
+                self.peripheral_cache
+                    .insert(
+                        peripheral.address(),
+                        Arc::new(peripheral),
+                        self.app_conf.peripheral_cache_ttl,
+                    )
+                    .await;
 
+                Ok::<(), CollectorError>(())
+            })
+            .buffer_unordered(16)
+            .collect::<Vec<_>>()
+            .await;
+
+        for result in caching_results {
+            result?;
+        }
         Ok(())
     }
 
@@ -197,7 +207,10 @@ impl PeripheralManager {
             info!("Connecting to peripheral {peripheral_key}");
             CONNECTING_DURATION
                 .measure_ms(metric_labels.clone(), || {
-                    tokio::time::timeout(Duration::from_secs(30), peripheral.connect())
+                    timeout(
+                        self.app_conf.peripheral_connect_timeout,
+                        peripheral.connect(),
+                    )
                 })
                 .await??;
             info!("Connected to peripheral {peripheral_key}");
@@ -446,7 +459,10 @@ impl PeripheralManager {
             info!("Connecting to {fqcn}");
             CONNECTING_DURATION
                 .measure_ms(metric_labels, || {
-                    tokio::time::timeout(Duration::from_secs(30), peripheral.connect())
+                    timeout(
+                        self.app_conf.peripheral_connect_timeout,
+                        peripheral.connect(),
+                    )
                 })
                 .await??;
         }
@@ -541,7 +557,10 @@ impl PeripheralManager {
 }
 
 impl PeripheralManager {
-    async fn build_key(&self, peripheral_id: &PeripheralId) -> CollectorResult<PeripheralKey> {
+    async fn build_peripheral_key(
+        &self,
+        peripheral_id: &PeripheralId,
+    ) -> CollectorResult<PeripheralKey> {
         let mut peripheral_key = PeripheralKey::try_from(peripheral_id)?;
         if let Some(peripheral) = self
             .get_peripheral(&peripheral_key.peripheral_address)
@@ -555,7 +574,23 @@ impl PeripheralManager {
         Ok(peripheral_key)
     }
 
-    async fn discover_task(self: Arc<Self>) -> CollectorResult<()> {
+    pub(crate) async fn discover_task(self: Arc<Self>) -> CollectorResult<()> {
+        loop {
+            match self.clone().discover_task_internal().await {
+                Ok(_) => return Ok(()),
+                Err(CollectorError::TimeoutError(_)) => {
+                    error!(
+                        "Timeout reading from the stream for adapter {}",
+                        self.adapter_info
+                    );
+                    continue;
+                }
+                err => return err,
+            }
+        }
+    }
+
+    async fn discover_task_internal(self: Arc<Self>) -> CollectorResult<()> {
         let limiter = DebounceLimiter::new(
             self.app_conf.event_throttling_purge_samples,
             self.app_conf.event_throttling_purge_threshold,
@@ -563,61 +598,78 @@ impl PeripheralManager {
         );
 
         let mut stream = self.adapter.events().await?;
-        while let Some(event) = stream.next().await {
-            let peripheral_id = event.get_peripheral_id();
-            let peripheral_key = Arc::new(self.build_key(peripheral_id).await?);
-            let metric_labels = [
-                Label::new("scope", "discovery"),
-                peripheral_key.peripheral_label(),
-                peripheral_key.adapter_label(),
-            ];
-
-            CONNECTED_PERIPHERALS.value(
-                self.get_all_connected_peripherals().await.get_all().len() as f64,
-                [
-                    Label::new("scope", "discovery"),
-                    peripheral_key.adapter_label(),
-                ],
-            );
-
-            match event {
-                CentralEvent::DeviceDisconnected(_) => {
-                    let peripheral_manager = Arc::clone(&self);
-
-                    tokio::spawn(async move {
-                        CONNECTIONS_DROPPED.increment(1, metric_labels);
-                        peripheral_manager.handle_disconnect(&peripheral_key).await;
-                    });
-                }
-                _ => {
-                    if limiter.throttle(peripheral_key.clone()).await {
-                        EVENT_THROTTLED_COUNT.increment(1, metric_labels);
-                        continue;
-                    };
-
-                    let Some(config) = self
-                        .configuration_manager
-                        .get_matching_config(&peripheral_key)
-                        .await
-                    else {
-                        continue;
-                    };
-                    let peripheral_manager = Arc::clone(&self);
-                    tokio::spawn(async move {
-                        CONNECTIONS_HANDLED.increment(1, metric_labels.clone());
-                        if let Err(err) = peripheral_manager
-                            .clone()
-                            .connect_all_matching(&peripheral_key, config)
-                            .await
-                        {
-                            CONNECTING_ERRORS.increment(1, metric_labels);
-                            error!("Error connecting to peripheral {peripheral_key}: {err:?}");
-                        }
-                    });
-                }
-            };
+        while let Some(event) = timeout(
+            self.app_conf.notification_stream_read_timeout,
+            stream.next(),
+        )
+        .await?
+        {
+            self.clone().handle_single_event(event, &limiter).await?;
         }
+
         Err(CollectorError::EndOfStream)
+    }
+
+    async fn handle_single_event(
+        self: Arc<Self>,
+        event: CentralEvent,
+        limiter: &DebounceLimiter<Arc<PeripheralKey>>,
+    ) -> CollectorResult<()> {
+        let peripheral_id = event.get_peripheral_id();
+        let peripheral_key = Arc::new(self.build_peripheral_key(peripheral_id).await?);
+        let metric_labels = [
+            Label::new("scope", "discovery"),
+            peripheral_key.peripheral_label(),
+            peripheral_key.adapter_label(),
+        ];
+
+        CONNECTED_PERIPHERALS.value(
+            self.get_all_connected_peripherals().await.get_all().len() as f64,
+            [
+                Label::new("scope", "discovery"),
+                peripheral_key.adapter_label(),
+            ],
+        );
+
+        EVENT_COUNT.increment(1, metric_labels.clone());
+
+        match event {
+            CentralEvent::DeviceDisconnected(_) => {
+                let peripheral_manager = Arc::clone(&self);
+
+                tokio::spawn(async move {
+                    CONNECTIONS_DROPPED.increment(1, metric_labels);
+                    peripheral_manager.handle_disconnect(&peripheral_key).await;
+                });
+            }
+            _ => {
+                if limiter.throttle(peripheral_key.clone()).await {
+                    EVENT_THROTTLED_COUNT.increment(1, metric_labels);
+                    return Ok(());
+                };
+
+                let Some(config) = self
+                    .configuration_manager
+                    .get_matching_config(&peripheral_key)
+                    .await
+                else {
+                    return Ok(());
+                };
+                let peripheral_manager = Arc::clone(&self);
+                tokio::spawn(async move {
+                    CONNECTIONS_HANDLED.increment(1, metric_labels.clone());
+                    if let Err(err) = peripheral_manager
+                        .clone()
+                        .connect_all_matching(&peripheral_key, config)
+                        .await
+                    {
+                        CONNECTING_ERRORS.increment(1, metric_labels);
+                        error!("Error connecting to peripheral {peripheral_key}: {err:?}");
+                    }
+                });
+            }
+        }
+        Ok(())
     }
 }
 

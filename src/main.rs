@@ -1,5 +1,4 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use clap::Parser;
 use fern::colors::{Color, ColoredLevelConfig};
@@ -54,17 +53,16 @@ fn init_logging() -> CollectorResult<()> {
 #[tokio::main]
 async fn main() -> CollectorResult<()> {
     init_logging()?;
+    let app_conf = Arc::new(AppConf::parse());
     let builder = PrometheusBuilder::new();
     let prometheus_handle: PrometheusHandle = builder
         .idle_timeout(
             MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM | MetricKindMask::GAUGE,
-            Some(Duration::from_secs(60 * 5)),
+            Some(app_conf.metrics_idle_timeout),
         )
         .install_recorder()
         .expect("failed to install recorder");
     describe_metrics();
-
-    let app_conf = Arc::new(AppConf::parse());
 
     let collector_conf = CollectorConfigurationDto::try_from(app_conf.as_ref())?;
     let configuration_manager = Arc::new(ConfigurationManager::default());

@@ -16,6 +16,7 @@ mod tests {
     use crate::inner::conf::dto::service::ServiceConfigDto;
     use crate::inner::conf::model::filter::Filter;
     use crate::inner::metrics::MetricType;
+    use serde_json::json;
     use std::sync::Arc;
     use std::time::Duration;
     use uuid::Uuid;
@@ -68,5 +69,62 @@ mod tests {
         println!("{}", serialized);
         let deserialized: CollectorConfigurationDto = serde_yaml::from_str(&serialized).unwrap();
         assert_eq!(config, deserialized);
+    }
+
+    #[test]
+    fn test_load_example() {
+        let example = include_str!("../../../../example.yaml");
+        let deserialized: CollectorConfigurationDto = serde_yaml::from_str(example).unwrap();
+        let mut grafana_rules = vec![];
+        for peripheral in deserialized.peripherals {
+            for service in peripheral.services {
+                for characteristic in service.characteristics {
+                    let (char_uuid, name) = match characteristic {
+                        CharacteristicConfigDto::Subscribe { uuid, name, .. } => (uuid, name),
+                        CharacteristicConfigDto::Poll { uuid, name, .. } => (uuid, name),
+                    };
+
+                    let name = name
+                        .unwrap()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join("");
+
+                    let regex = format!("(.*)(.*)({char_uuid})");
+                    let rename_pattern = format!("$1 $2 {name}");
+
+                    let char_rename = json!({
+                        "id": "renameByRegex",
+                        "options": {
+                            "regex": regex,
+                            "renamePattern": rename_pattern
+                        }
+                    });
+
+                    grafana_rules.push(char_rename);
+                }
+
+                let service_name = service
+                    .name
+                    .unwrap()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join("");
+                let service_uuid = service.uuid;
+                let regex = format!("(.*)({service_uuid})(.+)");
+                let rename_pattern = format!("$1 {service_name} $3");
+                let service_rename = json!({
+                    "id": "renameByRegex",
+                    "options": {
+                        "regex": regex,
+                        "renamePattern": rename_pattern
+                    }
+                });
+
+                grafana_rules.push(service_rename);
+            }
+        }
+
+        println!("{}", serde_json::to_string_pretty(&grafana_rules).unwrap());
     }
 }
