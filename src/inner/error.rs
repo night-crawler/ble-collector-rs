@@ -57,6 +57,9 @@ pub(crate) enum CollectorError {
 
     #[error("Unexpected IO command")]
     UnexpectedIoCommand,
+
+    #[error("Tracing filter parse error: {0}")]
+    TracingFilterParseError(#[from] tracing_subscriber::filter::ParseError),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;
