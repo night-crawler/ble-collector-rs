@@ -530,17 +530,13 @@ impl PeripheralManager {
         let subscription_map = self.subscription_map.lock().await;
         let subscribed_characteristic = self.subscribed_characteristics.lock().await;
 
-        ConnectedPeripherals {
-            poll: poll_handle_map
+        ConnectedPeripherals::new(
+            poll_handle_map.keys().map(|fqcn| fqcn.peripheral_address),
+            subscription_map.keys().cloned(),
+            subscribed_characteristic
                 .keys()
-                .map(|fqcn| fqcn.peripheral_address)
-                .collect(),
-            subscribe: subscription_map.keys().cloned().collect(),
-            by_characteristic: subscribed_characteristic
-                .keys()
-                .map(|fqcn| fqcn.peripheral_address)
-                .collect(),
-        }
+                .map(|fqcn| fqcn.peripheral_address),
+        )
     }
 }
 
