@@ -1,8 +1,6 @@
 use crate::inner::debounce_limiter::DebounceLimiter;
 use crate::inner::error::{CollectorError, CollectorResult};
-use crate::inner::metrics::{
-    CONNECTING_ERRORS, CONNECTIONS_HANDLED, EVENT_COUNT, EVENT_THROTTLED_COUNT,
-};
+use crate::inner::metrics::{CONNECTING_ERRORS, EVENT_COUNT, EVENT_THROTTLED_COUNT};
 use crate::inner::model::peripheral_key::PeripheralKey;
 use crate::inner::peripheral_manager::ext::CentralEventExt;
 use crate::inner::peripheral_manager::PeripheralManager;
@@ -98,10 +96,9 @@ impl PeripheralManager {
                 };
                 let peripheral_manager = Arc::clone(&self);
                 tokio::spawn(async move {
-                    CONNECTIONS_HANDLED.increment();
                     if peripheral_manager
                         .clone()
-                        .connect_all_matching(&peripheral_key, config, span.clone())
+                        .connect_all(&peripheral_key, config, span.clone())
                         .await
                         .is_err()
                     {

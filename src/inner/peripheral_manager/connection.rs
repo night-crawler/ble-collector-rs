@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -12,8 +13,8 @@ use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
 use crate::inner::conf::model::service_characteristic_key::ServiceCharacteristicKey;
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::metrics::{
-    CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTIONS_DROPPED, CONNECTION_DURATION,
-    SERVICE_DISCOVERY_DURATION, TOTAL_CONNECTING_DURATION,
+    CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED,
+    CONNECTION_DURATION, SERVICE_DISCOVERY_DURATION, TOTAL_CONNECTING_DURATION,
 };
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::model::fqcn::Fqcn;
@@ -23,12 +24,15 @@ use crate::inner::peripheral_manager::PeripheralManager;
 
 impl PeripheralManager {
     #[tracing::instrument(level = "info", skip_all, parent = & _parent_span, err)]
-    pub(crate) async fn connect_all_matching(
+    pub(super) async fn connect_all(
         self: Arc<Self>,
         peripheral_key: &PeripheralKey,
         peripheral_config: Arc<FlatPeripheralConfig>,
         _parent_span: Span,
     ) -> CollectorResult<()> {
+        info!("Connecting to all available peripheral characteristics");
+        CONNECTIONS_HANDLED.increment();
+
         let peripheral = self
             .get_peripheral(&peripheral_key.peripheral_address)
             .await?
@@ -75,7 +79,7 @@ impl PeripheralManager {
             };
 
             TOTAL_CONNECTING_DURATION
-                .measure(|| self.clone().handle_connect(ctx))
+                .measure(|| self.clone().spawn(ctx))
                 .await?;
         }
 
@@ -92,8 +96,8 @@ impl PeripheralManager {
     service = % ctx.fqcn.service_uuid,
     characteristic = % ctx.fqcn.characteristic_uuid,
     ))]
-    async fn handle_connect(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
-        info!("Connecting");
+    async fn spawn(self: Arc<Self>, ctx: ConnectionContext) -> CollectorResult<()> {
+        info!("Spawning subscription / polling tasks");
         let fqcn = ctx.fqcn.clone();
         let self_clone = Arc::clone(&self);
 
@@ -137,11 +141,11 @@ impl PeripheralManager {
         let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
 
         match subscribed_characteristics.entry(ctx.fqcn.clone()) {
-            std::collections::hash_map::Entry::Occupied(_) => {
+            Occupied(_) => {
                 warn!("Already subscribed");
                 return Ok(());
             }
-            std::collections::hash_map::Entry::Vacant(entry) => {
+            Vacant(entry) => {
                 entry.insert(ctx.characteristic_config.clone());
             }
         }
@@ -155,6 +159,8 @@ impl PeripheralManager {
     }
     #[tracing::instrument(level = "info", skip_all, err)]
     pub(super) async fn connect(&self, peripheral: &Peripheral) -> CollectorResult<()> {
+        let _connect_permit = self.connection_lock.lock_for(peripheral.address()).await?;
+        info!("Connecting to peripheral");
         CONNECTING_DURATION
             .measure(|| {
                 timeout(

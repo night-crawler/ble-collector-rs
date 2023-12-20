@@ -57,6 +57,9 @@ pub(crate) enum CollectorError {
 
     #[error("Tracing filter parse error: {0}")]
     TracingFilterParseError(#[from] tracing_subscriber::filter::ParseError),
+
+    #[error("Tracing filter parse error: {0}")]
+    AcquireError(#[from] tokio::sync::AcquireError),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

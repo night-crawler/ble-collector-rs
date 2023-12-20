@@ -62,6 +62,8 @@ impl PeripheralManager {
         for result in caching_results {
             result?;
         }
+
+        info!("Cache updated");
         Ok(())
     }
 

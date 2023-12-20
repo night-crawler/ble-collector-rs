@@ -15,6 +15,7 @@ use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::error::CollectorResult;
+use crate::inner::key_lock::KeyLock;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::model::fqcn::Fqcn;
 
@@ -36,6 +37,7 @@ pub(crate) struct PeripheralManager {
     configuration_manager: Arc<ConfigurationManager>,
     pub(crate) app_conf: Arc<AppConf>,
     span: Span,
+    connection_lock: KeyLock<BDAddr>,
 }
 
 impl Drop for PeripheralManager {
@@ -70,6 +72,7 @@ impl PeripheralManager {
             configuration_manager,
             app_conf,
             span,
+            connection_lock: Default::default(),
         }
     }
 }

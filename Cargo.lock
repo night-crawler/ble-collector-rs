@@ -303,6 +303,7 @@ dependencies = [
  "metrics-util",
  "num-bigint",
  "num-traits",
+ "pin-project-lite",
  "rand",
  "regex",
  "retainer",

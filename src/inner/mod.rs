@@ -8,6 +8,7 @@ pub(crate) mod debounce_limiter;
 pub(crate) mod dto;
 pub(crate) mod error;
 pub(crate) mod http_error;
+mod key_lock;
 pub(crate) mod metrics;
 pub(crate) mod model;
 pub(crate) mod peripheral_manager;
