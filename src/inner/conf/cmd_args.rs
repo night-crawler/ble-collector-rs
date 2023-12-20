@@ -59,7 +59,7 @@ pub(crate) struct AppConf {
     /// Default batch parallelism for characteristic I/O.
     #[arg(long, default_value = "1")]
     pub(crate) default_batch_parallelism: usize,
-    
+
     /// Service discovery parallelism.
     #[arg(long, default_value = "4")]
     pub(crate) service_discovery_parallelism: usize,

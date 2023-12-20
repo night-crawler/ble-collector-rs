@@ -16,13 +16,13 @@ use tracing_subscriber::EnvFilter;
 use inner::process::api_publisher::ApiPublisher;
 
 use crate::inner::adapter_manager::AdapterManager;
-use crate::inner::conf::cmd_args::AppConf;
-use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
-use crate::inner::conf::manager::ConfigurationManager;
-use crate::inner::controller::{
+use crate::inner::api::{
     describe_adapters, get_collector_data, get_connected_peripherals, get_metrics, list_adapters,
     list_configurations, read_write_characteristic,
 };
+use crate::inner::conf::cmd_args::AppConf;
+use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
+use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::error::CollectorResult;
 use crate::inner::metrics::describe_metrics;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
@@ -39,9 +39,8 @@ async fn main() -> anyhow::Result<()> {
     let fmt_layer = tracing_subscriber::fmt::layer()
         .compact()
         .with_ansi(atty::is(atty::Stream::Stdout))
-        .with_target(true);
-    let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))?;
+        .with_target(false);
+    let filter_layer = EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("info"))?;
 
     tracing_subscriber::registry()
         .with(filter_layer)
@@ -67,7 +66,7 @@ async fn main() -> anyhow::Result<()> {
             "adapter",
             "characteristic",
             "scope",
-            "service"
+            "service",
         ]))
         .install()?;
 

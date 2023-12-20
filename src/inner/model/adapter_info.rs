@@ -1,5 +1,4 @@
 use anyhow::Context;
-use metrics::Label;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -7,12 +6,6 @@ use std::fmt::{Display, Formatter};
 pub(crate) struct AdapterInfo {
     pub(crate) id: String,
     pub(crate) modalias: String,
-}
-
-impl AdapterInfo {
-    pub(crate) fn adapter_label(&self) -> Label {
-        Label::new("adapter", self.id.clone())
-    }
 }
 
 impl Display for AdapterInfo {

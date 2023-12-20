@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bounded_integer::BoundedUsize;
 use btleplug::api::Peripheral as _;
 use futures_util::{stream, StreamExt};
-use tracing::{info_span, Instrument, Span};
+use tracing::{info, Instrument, Span};
 
 use crate::inner::countdown_latch::CountDownLatch;
 use crate::inner::dto::{
@@ -26,17 +26,16 @@ impl PeripheralIoBatchRequestDto {
     }
 }
 
+#[tracing::instrument(level = "info", skip_all)]
 pub(crate) async fn execute_batches(
     peripheral_manager: Arc<PeripheralManager>,
     request: PeripheralIoRequestDto,
-    span: Span,
 ) -> PeripheralIoResponseDto {
     let manager_stream = std::iter::repeat_with(|| Arc::clone(&peripheral_manager));
-
+    let span = Span::current();
     let batch_responses = stream::iter(request.batches.into_iter().zip(manager_stream))
         .map(|(batch, peripheral_manager)| async {
-            let batch_span = info_span!("batch");
-            execute_batch(peripheral_manager, batch, batch_span).await
+            execute_batch(peripheral_manager, batch, span.clone()).await
         })
         .buffered(
             request
@@ -45,20 +44,23 @@ pub(crate) async fn execute_batches(
                 .unwrap_or(peripheral_manager.app_conf.default_multi_batch_parallelism),
         )
         .collect::<Vec<_>>()
-        .instrument(span.clone())
+        .in_current_span()
         .await;
 
     PeripheralIoResponseDto { batch_responses }
 }
 
+#[tracing::instrument(level = "info", skip_all, parent = &_parent_span)]
 async fn execute_batch(
     peripheral_manager: Arc<PeripheralManager>,
     batch: PeripheralIoBatchRequestDto,
-    batch_span: Span,
+    _parent_span: Span,
 ) -> PeripheralIoBatchResponseDto {
     let latch = Arc::new(CountDownLatch::new(batch.get_async_reads_count()));
     let manager_stream = std::iter::repeat_with(|| Arc::clone(&peripheral_manager));
     let latch_stream = std::iter::repeat_with(|| Arc::clone(&latch));
+
+    let span = Span::current();
 
     let command_responses: Vec<Option<ResultDto<Vec<u8>>>> = stream::iter(
         batch
@@ -68,17 +70,14 @@ async fn execute_batch(
             .zip(latch_stream),
     )
     .map(|((cmd, manager), latch)| async {
-        let batch_span = batch_span.clone();
-        let fqcn = cmd.get_fqcn();
+        let span = span.clone();
         match cmd {
             IoCommand::Read { .. } => {
-                let span = info_span!(parent: batch_span, "read", peripheral = %fqcn.peripheral_address, service = %fqcn.service_uuid, characteristic = %fqcn.characteristic_uuid);
-                let read_result = read_value_with_timeout(manager, latch, cmd).instrument(span).await;
+                let read_result = read_value_with_timeout(manager, latch, cmd, span).await;
                 Some(read_result.into())
             }
             IoCommand::Write { .. } => {
-                let span = info_span!(parent: batch_span, "write", peripheral = %fqcn.peripheral_address, service = %fqcn.service_uuid, characteristic = %fqcn.characteristic_uuid);
-                if let Err(err) = write_value_with_timeout(manager, latch, cmd).instrument(span).await {
+                if let Err(err) = write_value_with_timeout(manager, latch, cmd, span).await {
                     Some(Err(err).into())
                 } else {
                     None
@@ -98,10 +97,16 @@ async fn execute_batch(
     PeripheralIoBatchResponseDto { command_responses }
 }
 
+#[tracing::instrument(level = "info", skip_all, parent = &_parent_span, err, fields(
+    peripheral = %cmd.get_fqcn().peripheral_address,
+    service = %cmd.get_fqcn().service_uuid,
+    characteristic = %cmd.get_fqcn().characteristic_uuid,
+))]
 async fn read_value_with_timeout(
     manager: Arc<PeripheralManager>,
     latch: Arc<CountDownLatch>,
     cmd: IoCommand,
+    _parent_span: Span,
 ) -> CollectorResult<Vec<u8>> {
     let timeout_duration = cmd
         .get_timeout()
@@ -123,6 +128,8 @@ async fn read_value(
     else {
         return Err(CollectorError::UnexpectedIoCommand);
     };
+
+    info!("Reading value");
 
     let (peripheral, characteristic) = manager.get_peripheral_characteristic(&fqcn).await?;
 
@@ -152,10 +159,16 @@ async fn read_value(
     result
 }
 
+#[tracing::instrument(level = "info", skip_all, parent = &_parent_span, err, fields(
+    peripheral = %cmd.get_fqcn().peripheral_address,
+    service = %cmd.get_fqcn().service_uuid,
+    characteristic = %cmd.get_fqcn().characteristic_uuid,
+))]
 async fn write_value_with_timeout(
     manager: Arc<PeripheralManager>,
     latch: Arc<CountDownLatch>,
     cmd: IoCommand,
+    _parent_span: Span,
 ) -> CollectorResult<()> {
     let timeout_duration = cmd
         .get_timeout()
@@ -179,6 +192,8 @@ async fn write_value(
     else {
         return Err(CollectorError::UnexpectedIoCommand);
     };
+
+    info!("Writing value");
 
     let (peripheral, characteristic) = manager.get_peripheral_characteristic(&fqcn).await?;
 

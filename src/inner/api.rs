@@ -3,7 +3,6 @@ use std::sync::Arc;
 use metrics_exporter_prometheus::PrometheusHandle;
 use rocket::http::Status;
 use rocket::{get, post};
-use tracing::info_span;
 
 use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::batch_executor::execute_batches;
@@ -47,6 +46,9 @@ pub(crate) async fn get_collector_data(
     Ok(Envelope::from(Arc::clone(storage)).into())
 }
 
+#[tracing::instrument(level = "info", skip_all, fields(
+adapter_id = % adapter_id,
+))]
 #[post("/adapters/<adapter_id>/io", format = "json", data = "<request>")]
 pub(crate) async fn read_write_characteristic(
     adapter_id: &str,
@@ -59,8 +61,7 @@ pub(crate) async fn read_write_characteristic(
                 .with_status(Status::NotFound),
         );
     };
-    let span = info_span!("read_write_characteristic", adapter_id = adapter_id);
-    let response = execute_batches(peripheral_manager, request.into_inner(), span).await;
+    let response = execute_batches(peripheral_manager, request.into_inner()).await;
     Ok(Envelope::from(response).into())
 }
 
