@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use log::warn;
 use metrics::{counter, gauge, histogram, KeyName, SharedString};
+use tracing::warn;
 
 use crate::inner::conf::dto::characteristic::PublishMetricConfigDto;
 use crate::inner::metrics::MetricType;

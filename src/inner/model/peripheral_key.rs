@@ -4,7 +4,6 @@ use std::fmt::Display;
 use anyhow::Context;
 use btleplug::api::BDAddr;
 use btleplug::platform::PeripheralId;
-use metrics::Label;
 
 #[derive(Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub(crate) struct PeripheralKey {
@@ -41,15 +40,5 @@ impl TryFrom<&PeripheralId> for PeripheralKey {
             peripheral_address: address,
             name: None,
         })
-    }
-}
-
-impl PeripheralKey {
-    pub(crate) fn peripheral_label(&self) -> Label {
-        Label::new("peripheral", self.peripheral_address.to_string())
-    }
-
-    pub(crate) fn adapter_label(&self) -> Label {
-        Label::new("adapter", self.adapter_id.clone())
     }
 }

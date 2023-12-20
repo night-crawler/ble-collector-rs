@@ -7,9 +7,9 @@ use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::stream;
 use futures_util::StreamExt;
 use kanal::AsyncSender;
-use log::{info, warn};
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
+use tracing::{info, info_span, warn};
 
 use crate::inner::dto::{AdapterDto, PeripheralDto};
 use crate::inner::error::{CollectorError, CollectorResult};
@@ -38,27 +38,32 @@ impl AdapterManager {
         }
     }
     pub(crate) async fn init(&self) -> CollectorResult<()> {
-        let manager = Manager::new().await?;
-        let adapters = manager.adapters().await?;
-        info!("Discovered {} adapter(s)", adapters.len());
-        for adapter in adapters {
-            info!("Discovered adapter: {:?}", adapter);
-            self.add_adapter(adapter).await?;
+        async move {
+            let manager = Manager::new().await?;
+            let adapters = manager.adapters().await?;
+            info!(adapters = ?adapters, "Discovered {} adapter(s)", adapters.len());
+            for adapter in adapters {
+                let info = AdapterInfo::try_from(adapter.adapter_info().await?)?;
+                info!(adapter_info = %info, "Discovered adapter");
+                self.init_peripheral_manager(adapter).await?;
+            }
+            Ok(())
         }
-        Ok(())
+        .await
     }
 
-    async fn add_adapter(&self, adapter: Adapter) -> CollectorResult<()> {
+    async fn init_peripheral_manager(&self, adapter: Adapter) -> CollectorResult<()> {
         let adapter_info = AdapterInfo::try_from(adapter.adapter_info().await?)?;
+        let span = info_span!("PeripheralManager", adapter = adapter_info.id);
         self.peripheral_managers
             .lock()
             .await
             .push(Arc::new(PeripheralManager::new(
                 adapter,
-                adapter_info,
                 self.payload_sender.clone(),
                 self.configuration_manager.clone(),
                 Arc::clone(&self.app_conf),
+                span,
             )));
         Ok(())
     }
@@ -87,7 +92,7 @@ impl AdapterManager {
         }
 
         if let Some(result) = join_set.join_next().await {
-            warn!("Peripheral discovery has ended: {result:?}");
+            warn!(result = ?result, "Peripheral discovery has ended");
         }
         // TODO: restart discovery and recreate everything if we've reached this point
         Ok(())

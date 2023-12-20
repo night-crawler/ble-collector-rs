@@ -1,4 +1,4 @@
-use metrics::{counter, gauge, KeyName, Label, SharedString, Unit};
+use metrics::{counter, gauge, KeyName, SharedString, Unit};
 use rocket::serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
@@ -49,58 +49,37 @@ impl StaticMetric {
         }
     }
 
-    pub(crate) fn increment<L>(&self, value: u64, labels: impl IntoIterator<Item = L>)
-    where
-        Label: From<L>,
-    {
-        let labels = labels.into_iter().map(|l| l.into()).collect::<Vec<_>>();
+    pub(crate) fn increment(&self) {
         match self.metric_type {
             MetricType::Counter => {
-                counter!(self.metric_name, value, labels);
+                counter!(self.metric_name, 1);
             }
             _ => panic!("Metric type mismatch"),
         }
     }
 
-    pub(crate) fn value<L>(&self, value: f64, labels: impl IntoIterator<Item = L>)
-    where
-        Label: From<L>,
-    {
-        let labels = labels.into_iter().map(|l| l.into()).collect::<Vec<_>>();
+    pub(crate) fn gauge(&self, value: f64) {
         match self.metric_type {
             MetricType::Gauge => {
-                gauge!(self.metric_name, value, labels);
+                gauge!(self.metric_name, value);
             }
             _ => panic!("Metric type mismatch"),
         }
     }
 
-    pub(crate) fn histogram<L>(&self, value: f64, labels: impl IntoIterator<Item = L>)
+    pub(crate) async fn measure<Fut, R>(&self, f: impl FnOnce() -> Fut) -> R
     where
-        Label: From<L>,
-    {
-        let labels: Vec<Label> = labels.into_iter().map(|l| l.into()).collect::<Vec<Label>>();
-        match self.metric_type {
-            MetricType::Histogram => {
-                metrics::histogram!(self.metric_name, value, labels);
-            }
-            _ => panic!("Metric type mismatch"),
-        }
-    }
-
-    pub(crate) async fn measure_ms<Fut, R, L>(
-        &self,
-        labels: impl IntoIterator<Item = L>,
-        f: impl FnOnce() -> Fut,
-    ) -> R
-    where
-        Label: From<L>,
         Fut: std::future::Future<Output = R>,
     {
-        let now = std::time::Instant::now();
-        let result = f().await;
-        self.histogram(now.elapsed().as_millis() as f64, labels);
-        result
+        match self.metric_type {
+            MetricType::Histogram => {
+                let now = std::time::Instant::now();
+                let result = f().await;
+                metrics::histogram!(self.metric_name, now.elapsed().as_millis() as f64);
+                result
+            }
+            _ => panic!("Metric type mismatch"),
+        }
     }
 }
 

@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use clap::Parser;
 use console_subscriber::ConsoleLayer;
-use log::{info, warn};
 use metrics_exporter_prometheus::PrometheusBuilder;
 use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::layers::Stack;
 use metrics_util::MetricKindMask;
 use rocket::routes;
 use tokio::task::JoinSet;
+use tracing::warn;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
@@ -37,11 +37,11 @@ async fn main() -> anyhow::Result<()> {
     let metrics_layer = MetricsLayer::new();
     let console_layer = ConsoleLayer::builder().with_default_env().spawn();
     let fmt_layer = tracing_subscriber::fmt::layer()
+        .compact()
         .with_ansi(atty::is(atty::Stream::Stdout))
         .with_target(true);
     let filter_layer = EnvFilter::try_from_default_env()
-        .or_else(|_| EnvFilter::try_new("info"))?
-        .add_directive("sample_directive=off".parse().unwrap());
+        .or_else(|_| EnvFilter::try_new("info"))?;
 
     tracing_subscriber::registry()
         .with(filter_layer)
@@ -62,7 +62,13 @@ async fn main() -> anyhow::Result<()> {
     let prometheus_handle = recorder.handle();
 
     Stack::new(recorder)
-        .push(TracingContextLayer::only_allow(["peripheral", "adapter", "characteristic", "scope"]))
+        .push(TracingContextLayer::only_allow([
+            "peripheral",
+            "adapter",
+            "characteristic",
+            "scope",
+            "service"
+        ]))
         .install()?;
 
     let handle = tokio::runtime::Handle::try_current()?;
@@ -154,7 +160,8 @@ async fn main() -> anyhow::Result<()> {
     });
 
     if let Some(result) = join_set.join_next().await {
-        info!("Main has ended: {result:?}");
+        warn!("Main has ended: {result:?}");
+        result??;
     }
 
     Ok(())
