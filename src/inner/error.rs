@@ -40,9 +40,6 @@ pub(crate) enum CollectorError {
     #[error("Conversion error: {0:?}")]
     ConversionError(#[from] ConversionError),
 
-    #[error("Failed to set the logger: {0:?}")]
-    SetLoggerError(#[from] log::SetLoggerError),
-
     #[error("Rocket error: {0:?}")]
     RocketError(#[from] rocket::Error),
 
@@ -57,6 +54,9 @@ pub(crate) enum CollectorError {
 
     #[error("Unexpected IO command")]
     UnexpectedIoCommand,
+
+    #[error("Tracing filter parse error: {0}")]
+    TracingFilterParseError(#[from] tracing_subscriber::filter::ParseError),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

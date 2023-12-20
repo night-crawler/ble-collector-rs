@@ -1,5 +1,5 @@
-use log::error;
 use tokio::sync::Semaphore;
+use tracing::error;
 
 pub(crate) struct CountDownLatch {
     count: u32,
@@ -23,37 +23,3 @@ impl CountDownLatch {
         self.semaphore.add_permits(1);
     }
 }
-
-// pub(crate) struct CountDownLatch {
-//     counter: AtomicI16,
-//     sender: kanal::AsyncSender<()>,
-//     receiver: kanal::AsyncReceiver<()>,
-// }
-//
-// pub(crate) struct Token {
-//     receiver: kanal::AsyncReceiver<()>,
-// }
-//
-// impl Token {
-//     pub(crate) async fn wait(&self) -> Result<(), ReceiveError> {
-//         self.receiver.recv().await
-//     }
-// }
-//
-// impl CountDownLatch {
-//     pub(crate) async fn countdown(&self) -> Result<(), SendError> {
-//         let prev = self.counter.fetch_sub(1, Ordering::SeqCst);
-//         if prev == 1 {
-//             for _ in 0..self.sender.receiver_count() {
-//                 self.sender.send(()).await?
-//             }
-//         }
-//         Ok(())
-//     }
-//
-//     pub(crate) async fn get_token(&self) -> Token {
-//         Token {
-//             receiver: self.receiver.clone(),
-//         }
-//     }
-// }

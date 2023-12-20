@@ -60,6 +60,10 @@ pub(crate) struct AppConf {
     #[arg(long, default_value = "1")]
     pub(crate) default_batch_parallelism: usize,
 
+    /// Service discovery parallelism.
+    #[arg(long, default_value = "4")]
+    pub(crate) service_discovery_parallelism: usize,
+
     /// Default peripheral connect timeout.
     #[arg(long, value_parser = humantime::parse_duration, default_value = "30s")]
     pub(crate) peripheral_connect_timeout: Duration,

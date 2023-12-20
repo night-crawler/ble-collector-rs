@@ -46,6 +46,9 @@ pub(crate) async fn get_collector_data(
     Ok(Envelope::from(Arc::clone(storage)).into())
 }
 
+#[tracing::instrument(level = "info", skip_all, fields(
+adapter_id = % adapter_id,
+))]
 #[post("/adapters/<adapter_id>/io", format = "json", data = "<request>")]
 pub(crate) async fn read_write_characteristic(
     adapter_id: &str,

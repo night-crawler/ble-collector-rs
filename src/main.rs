@@ -1,68 +1,78 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use fern::colors::{Color, ColoredLevelConfig};
-use log::{info, warn};
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use console_subscriber::ConsoleLayer;
+use metrics_exporter_prometheus::PrometheusBuilder;
+use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
+use metrics_util::layers::Stack;
 use metrics_util::MetricKindMask;
 use rocket::routes;
 use tokio::task::JoinSet;
+use tracing::warn;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
+
+use inner::process::api_publisher::ApiPublisher;
 
 use crate::inner::adapter_manager::AdapterManager;
-use crate::inner::conf::cmd_args::AppConf;
-use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
-use crate::inner::conf::manager::ConfigurationManager;
-use crate::inner::controller::{
+use crate::inner::api::{
     describe_adapters, get_collector_data, get_connected_peripherals, get_metrics, list_adapters,
     list_configurations, read_write_characteristic,
 };
+use crate::inner::conf::cmd_args::AppConf;
+use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
+use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::error::CollectorResult;
 use crate::inner::metrics::describe_metrics;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::process::metric_publisher::MetricPublisher;
 use crate::inner::process::processor::PayloadProcessor;
 use crate::inner::process::ProcessPayload;
-use inner::process::api_publisher::ApiPublisher;
 
 mod inner;
 
-fn init_logging() -> CollectorResult<()> {
-    let colors = ColoredLevelConfig::new()
-        .debug(Color::Magenta)
-        .error(Color::Red)
-        .info(Color::Green)
-        .warn(Color::Yellow);
-    fern::Dispatch::new()
-        .format(move |out, message, record| {
-            let line_number = record.line().map(|l| l.to_string()).unwrap_or("".to_string());
-            out.finish(format_args!(
-                "[{} {} {}:{line_number}] {}",
-                humantime::format_rfc3339_millis(std::time::SystemTime::now()),
-                colors.color(record.level()),
-                record.target(),
-                message
-            ))
-        })
-        .level(log::LevelFilter::Info)
-        .level_for("rocket", log::LevelFilter::Info)
-        .level_for("ble_collector_rs", log::LevelFilter::Debug)
-        .chain(std::io::stdout())
-        .apply()?;
-    Ok(())
-}
-
 #[tokio::main]
-async fn main() -> CollectorResult<()> {
-    init_logging()?;
+async fn main() -> anyhow::Result<()> {
+    let metrics_layer = MetricsLayer::new();
+    let console_layer = ConsoleLayer::builder().with_default_env().spawn();
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .compact()
+        .with_ansi(atty::is(atty::Stream::Stdout))
+        .with_target(false);
+    let filter_layer = EnvFilter::try_from_default_env().or_else(|_| EnvFilter::try_new("info"))?;
+
+    tracing_subscriber::registry()
+        .with(filter_layer)
+        .with(fmt_layer)
+        .with(metrics_layer)
+        .with(console_layer)
+        .init();
+
     let app_conf = Arc::new(AppConf::parse());
     let builder = PrometheusBuilder::new();
-    let prometheus_handle: PrometheusHandle = builder
+    let (recorder, exporter) = builder
         .idle_timeout(
             MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM | MetricKindMask::GAUGE,
             Some(app_conf.metrics_idle_timeout),
         )
-        .install_recorder()
-        .expect("failed to install recorder");
+        .build()?;
+
+    let prometheus_handle = recorder.handle();
+
+    Stack::new(recorder)
+        .push(TracingContextLayer::only_allow([
+            "peripheral",
+            "adapter",
+            "characteristic",
+            "scope",
+            "service",
+        ]))
+        .install()?;
+
+    let handle = tokio::runtime::Handle::try_current()?;
+    handle.spawn(exporter);
+
     describe_metrics();
 
     let collector_conf = CollectorConfigurationDto::try_from(app_conf.as_ref())?;
@@ -149,7 +159,8 @@ async fn main() -> CollectorResult<()> {
     });
 
     if let Some(result) = join_set.join_next().await {
-        info!("Main has ended: {result:?}");
+        warn!("Main has ended: {result:?}");
+        result??;
     }
 
     Ok(())

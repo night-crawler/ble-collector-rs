@@ -1,10 +1,10 @@
 use std::fmt::Display;
 use std::io::Cursor;
 
-use log::error;
 use rocket::http::{Header, Status};
 use rocket::response::Responder;
 use rocket::{Request, Response};
+use tracing::error;
 
 use crate::inner::dto::Envelope;
 use crate::inner::error::CollectorError;

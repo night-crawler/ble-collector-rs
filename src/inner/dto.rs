@@ -8,9 +8,9 @@ use btleplug::api::{
     BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service, WriteType,
 };
 use btleplug::platform::Peripheral;
-use log::{error, info};
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
+use tracing::{error, info};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,6 +259,13 @@ impl IoCommand {
                 }
             }
             IoCommand::Read { .. } => WriteType::WithoutResponse,
+        }
+    }
+
+    pub(crate) fn get_fqcn(&self) -> &Fqcn {
+        match self {
+            IoCommand::Write { fqcn, .. } => fqcn,
+            IoCommand::Read { fqcn, .. } => fqcn,
         }
     }
 }
