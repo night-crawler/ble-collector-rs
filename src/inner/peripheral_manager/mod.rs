@@ -87,9 +87,7 @@ impl PeripheralManager {
             .await?
             .context("Failed to get peripheral".to_string())?;
 
-        if !peripheral.is_connected().await? {
-            self.connect(&peripheral).await?;
-        }
+        self.connect(&peripheral).await?;
 
         let service = peripheral
             .services()

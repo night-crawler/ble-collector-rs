@@ -101,6 +101,7 @@ async fn execute_batch(
     peripheral = %cmd.get_fqcn().peripheral_address,
     service = %cmd.get_fqcn().service_uuid,
     characteristic = %cmd.get_fqcn().characteristic_uuid,
+    timeout = ?cmd.get_timeout(),
 ))]
 async fn read_value_with_timeout(
     manager: Arc<PeripheralManager>,

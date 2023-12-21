@@ -6,7 +6,7 @@ use btleplug::api::Peripheral as _;
 use btleplug::platform::Peripheral;
 use futures_util::StreamExt;
 use tokio::time::timeout;
-use tracing::{info, info_span, warn, Span};
+use tracing::{info, info_span, warn, Span, debug};
 
 use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
@@ -38,9 +38,7 @@ impl PeripheralManager {
             .await?
             .with_context(|| format!("Failed to get peripheral: {:?}", peripheral_key))?;
 
-        if !peripheral.is_connected().await? {
-            self.connect(&peripheral).await?;
-        }
+        self.connect(&peripheral).await?;
 
         if peripheral.services().is_empty() {
             info!("Forcing service discovery for peripheral {peripheral_key}");
@@ -160,6 +158,11 @@ impl PeripheralManager {
     #[tracing::instrument(level = "info", skip_all, err)]
     pub(super) async fn connect(&self, peripheral: &Peripheral) -> CollectorResult<()> {
         let _connect_permit = self.connection_lock.lock_for(peripheral.address()).await?;
+        if peripheral.is_connected().await? {
+            debug!("Already connected");
+            return Ok(());
+        }
+
         info!("Connecting to peripheral");
         CONNECTING_DURATION
             .measure(|| {
