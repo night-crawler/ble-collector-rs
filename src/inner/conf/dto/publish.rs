@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use crate::inner::metrics::MetricType;
 use metrics::Label;
 use rocket::serde::{Deserialize, Serialize};
-use crate::inner::metrics::MetricType;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct PublishMetricConfigDto {

@@ -9,13 +9,13 @@ use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_tracing_context::{MetricsLayer, TracingContextLayer};
 use metrics_util::layers::Stack;
 use metrics_util::MetricKindMask;
-use rocket::{Build, Rocket, routes};
+use rocket::{routes, Build, Rocket};
 use rumqttc::v5::MqttOptions;
 use tokio::task::JoinSet;
 use tracing::debug;
-use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::EnvFilter;
 
 use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::api::{
@@ -28,8 +28,8 @@ use crate::inner::metrics::describe_metrics;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::process::api_publisher::ApiPublisher;
 use crate::inner::process::metric_publisher::MetricPublisher;
-use crate::inner::process::PublishPayload;
 use crate::inner::process::multi_publisher::MultiPublisher;
+use crate::inner::process::PublishPayload;
 
 pub(super) fn init_tracing() -> anyhow::Result<()> {
     let metrics_layer = MetricsLayer::new();
@@ -142,13 +142,22 @@ pub(super) async fn init_mqtt(
                 continue;
             };
             let data = serde_json::to_string(&payload.value)?;
-            mqtt_client
-                .publish(
-                    mqtt_conf.topic.as_str(),
-                    mqtt_conf.qos(),
-                    mqtt_conf.retain,
-                    data,
+
+            let topic = mqtt_conf
+                .topic
+                .as_str()
+                .replace(
+                    "{{peripheral}}",
+                    &payload.fqcn.peripheral_address.to_string(),
                 )
+                .replace("{{service}}", &payload.fqcn.service_uuid.to_string())
+                .replace(
+                    "{{characteristic}}",
+                    &payload.fqcn.characteristic_uuid.to_string(),
+                );
+
+            mqtt_client
+                .publish(topic, mqtt_conf.qos(), mqtt_conf.retain, data)
                 .await?;
         }
 

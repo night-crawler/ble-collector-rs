@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::inner::conf::dto::publish::{PublishMetricConfigDto, PublishMqttConfigDto};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::inner::conf::dto::publish::{PublishMetricConfigDto, PublishMqttConfigDto};
 
 use crate::inner::conv::converter::Converter;
 
@@ -40,4 +40,3 @@ impl CharacteristicConfigDto {
         }
     }
 }
-

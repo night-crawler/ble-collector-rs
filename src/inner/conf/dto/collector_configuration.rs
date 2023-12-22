@@ -10,6 +10,8 @@ pub(crate) struct CollectorConfigurationDto {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inner::conf::dto::characteristic::CharacteristicConfigDto;
+    use crate::inner::conf::dto::publish::{PublishMetricConfigDto, PublishMqttConfigDto};
     use crate::inner::conf::dto::service::ServiceConfigDto;
     use crate::inner::conf::model::filter::Filter;
     use crate::inner::metrics::MetricType;
@@ -17,8 +19,6 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
     use uuid::Uuid;
-    use crate::inner::conf::dto::characteristic::CharacteristicConfigDto;
-    use crate::inner::conf::dto::publish::{PublishMetricConfigDto, PublishMqttConfigDto};
 
     /// check serialization / deserialization
     #[test]

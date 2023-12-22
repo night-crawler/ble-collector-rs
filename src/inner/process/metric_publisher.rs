@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use crate::inner::conf::dto::publish::PublishMetricConfigDto;
 use dashmap::DashMap;
 use metrics::{counter, gauge, histogram, KeyName, SharedString};
 use tracing::warn;
-use crate::inner::conf::dto::publish::PublishMetricConfigDto;
 
 use crate::inner::metrics::MetricType;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;

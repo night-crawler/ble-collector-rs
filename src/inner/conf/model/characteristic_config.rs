@@ -1,14 +1,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::inner::conf::dto::characteristic::CharacteristicConfigDto;
+use crate::inner::conf::dto::publish::{PublishMetricConfigDto, PublishMqttConfigDto};
 use crate::inner::conf::dto::service::ServiceConfigDto;
 use crate::inner::conv::converter::Converter;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::DurationSeconds;
 use uuid::Uuid;
-use crate::inner::conf::dto::characteristic::CharacteristicConfigDto;
-use crate::inner::conf::dto::publish::{PublishMetricConfigDto, PublishMqttConfigDto};
 
 use crate::inner::error::CollectorError;
 

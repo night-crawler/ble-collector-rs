@@ -82,8 +82,6 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
-
-
     join_set.spawn(async move {
         init_rocket(
             configuration_manager,
@@ -97,8 +95,6 @@ async fn main() -> anyhow::Result<()> {
 
         Ok(())
     });
-
-
 
     if let Some(result) = join_set.join_next().await {
         warn!("Main has ended: {result:?}");
