@@ -1,3 +1,4 @@
+use kanal::Receiver;
 use std::sync::Arc;
 
 use metrics::{counter, Label};
@@ -5,21 +6,21 @@ use tracing::debug;
 
 use crate::inner::metrics::PAYLOAD_PROCESSED_COUNT;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
-use crate::inner::process::ProcessPayload;
+use crate::inner::process::PublishPayload;
 
-pub(crate) struct PayloadProcessor {
-    receiver: kanal::Receiver<CharacteristicPayload>,
-    processors: Vec<Arc<dyn ProcessPayload + Send + Sync>>,
+pub(crate) struct MultiPublisher {
+    receiver: Receiver<Arc<CharacteristicPayload>>,
+    publishers: Vec<Arc<dyn PublishPayload + Send + Sync>>,
 }
 
-impl PayloadProcessor {
+impl MultiPublisher {
     pub(crate) fn new(
-        receiver: kanal::Receiver<CharacteristicPayload>,
-        processors: Vec<Arc<dyn ProcessPayload + Send + Sync>>,
+        receiver: Receiver<Arc<CharacteristicPayload>>,
+        publishers: Vec<Arc<dyn PublishPayload + Send + Sync>>,
     ) -> Self {
         Self {
             receiver,
-            processors,
+            publishers,
         }
     }
     pub(crate) fn block_on_receiving(self: Arc<Self>) {
@@ -34,7 +35,7 @@ impl PayloadProcessor {
                     payload.fqcn.characteristic_uuid.to_string(),
                 ),
             ];
-            self.process(payload);
+            self.publish(payload);
             counter!(PAYLOAD_PROCESSED_COUNT.metric_name, 1, metric_labels);
             if index % 10000 == 0 {
                 debug!("Processed {index} payloads");
@@ -42,10 +43,9 @@ impl PayloadProcessor {
         }
     }
 
-    pub(crate) fn process(&self, payload: CharacteristicPayload) {
-        let payload = Arc::new(payload);
-        for processor in &self.processors {
-            processor.process(Arc::clone(&payload));
+    pub(crate) fn publish(&self, payload: Arc<CharacteristicPayload>) {
+        for publisher in &self.publishers {
+            publisher.publish(Arc::clone(&payload));
         }
     }
 }

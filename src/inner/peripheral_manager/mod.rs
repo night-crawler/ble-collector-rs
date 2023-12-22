@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use btleplug::api::{BDAddr, Characteristic, Peripheral as _};
 use btleplug::platform::{Adapter, Peripheral};
-use kanal::AsyncSender;
 use retainer::Cache;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -18,6 +17,7 @@ use crate::inner::error::CollectorResult;
 use crate::inner::key_lock::KeyLock;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::model::fqcn::Fqcn;
+use crate::inner::process::FanOutSender;
 
 mod connection;
 mod connection_context;
@@ -33,7 +33,7 @@ pub(crate) struct PeripheralManager {
     poll_handle_map: Mutex<HashMap<Arc<Fqcn>, JoinHandle<()>>>,
     subscription_map: Mutex<HashMap<BDAddr, JoinHandle<()>>>,
     subscribed_characteristics: Mutex<HashMap<Arc<Fqcn>, Arc<CharacteristicConfig>>>,
-    payload_sender: AsyncSender<CharacteristicPayload>,
+    payload_sender: Arc<FanOutSender<Arc<CharacteristicPayload>>>,
     configuration_manager: Arc<ConfigurationManager>,
     pub(crate) app_conf: Arc<AppConf>,
     span: Span,
@@ -49,7 +49,7 @@ impl Drop for PeripheralManager {
 impl PeripheralManager {
     pub(crate) fn new(
         adapter: Adapter,
-        sender: AsyncSender<CharacteristicPayload>,
+        sender: Arc<FanOutSender<Arc<CharacteristicPayload>>>,
         configuration_manager: Arc<ConfigurationManager>,
         app_conf: Arc<AppConf>,
         span: Span,

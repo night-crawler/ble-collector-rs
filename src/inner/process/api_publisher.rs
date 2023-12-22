@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
-use crate::inner::process::ProcessPayload;
+use crate::inner::process::PublishPayload;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct DataPoint {
@@ -91,8 +91,8 @@ impl ApiPublisher {
     }
 }
 
-impl ProcessPayload for ApiPublisher {
-    fn process(&self, payload: Arc<CharacteristicPayload>) {
+impl PublishPayload for ApiPublisher {
+    fn publish(&self, payload: Arc<CharacteristicPayload>) {
         self.process(payload);
     }
 }

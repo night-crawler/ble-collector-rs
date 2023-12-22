@@ -6,7 +6,6 @@ use btleplug::api::{Central, Manager as _};
 use btleplug::platform::{Adapter, Manager, Peripheral};
 use futures_util::stream;
 use futures_util::StreamExt;
-use kanal::AsyncSender;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tracing::{info, info_span, warn};
@@ -16,10 +15,11 @@ use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::peripheral_manager::PeripheralManager;
+use crate::inner::process::FanOutSender;
 
 pub(crate) struct AdapterManager {
     peripheral_managers: Mutex<Vec<Arc<PeripheralManager>>>,
-    payload_sender: AsyncSender<CharacteristicPayload>,
+    payload_sender: Arc<FanOutSender<Arc<CharacteristicPayload>>>,
     configuration_manager: Arc<ConfigurationManager>,
     app_conf: Arc<AppConf>,
 }
@@ -27,12 +27,12 @@ pub(crate) struct AdapterManager {
 impl AdapterManager {
     pub(crate) fn new(
         configuration_manager: Arc<ConfigurationManager>,
-        payload_sender: AsyncSender<CharacteristicPayload>,
+        payload_sender: FanOutSender<Arc<CharacteristicPayload>>,
         app_conf: Arc<AppConf>,
     ) -> Self {
         Self {
             peripheral_managers: Default::default(),
-            payload_sender,
+            payload_sender: Arc::new(payload_sender),
             configuration_manager,
             app_conf,
         }

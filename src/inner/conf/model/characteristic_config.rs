@@ -1,13 +1,14 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::inner::conf::dto::characteristic::{CharacteristicConfigDto, PublishMetricConfigDto};
 use crate::inner::conf::dto::service::ServiceConfigDto;
 use crate::inner::conv::converter::Converter;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::DurationSeconds;
 use uuid::Uuid;
+use crate::inner::conf::dto::characteristic::CharacteristicConfigDto;
+use crate::inner::conf::dto::publish::{PublishMetricConfigDto, PublishMqttConfigDto};
 
 use crate::inner::error::CollectorError;
 
@@ -23,6 +24,7 @@ pub(crate) enum CharacteristicConfig {
         #[serde(default)]
         converter: Converter,
         publish_metrics: Option<PublishMetricConfigDto>,
+        publish_mqtt: Option<PublishMqttConfigDto>,
     },
     Poll {
         name: Option<Arc<String>>,
@@ -35,6 +37,7 @@ pub(crate) enum CharacteristicConfig {
         #[serde(default)]
         converter: Converter,
         publish_metrics: Option<PublishMetricConfigDto>,
+        publish_mqtt: Option<PublishMqttConfigDto>,
     },
 }
 
@@ -54,6 +57,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 history_size,
                 converter,
                 publish_metrics,
+                publish_mqtt,
             } => Ok(CharacteristicConfig::Subscribe {
                 name: name.clone(),
                 service_name,
@@ -62,6 +66,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 history_size: history_size.unwrap_or(service_conf.default_history_size),
                 converter: converter.clone(),
                 publish_metrics: publish_metrics.clone(),
+                publish_mqtt: publish_mqtt.clone(),
             }),
             CharacteristicConfigDto::Poll {
                 name,
@@ -70,6 +75,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 history_size,
                 converter,
                 publish_metrics,
+                publish_mqtt,
             } => Ok(CharacteristicConfig::Poll {
                 name: name.clone(),
                 uuid: *uuid,
@@ -79,6 +85,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 history_size: history_size.unwrap_or(service_conf.default_history_size),
                 converter: converter.clone(),
                 publish_metrics: publish_metrics.clone(),
+                publish_mqtt: publish_mqtt.clone(),
             }),
         }
     }
@@ -113,6 +120,13 @@ impl CharacteristicConfig {
             CharacteristicConfig::Poll {
                 publish_metrics, ..
             } => publish_metrics.as_ref(),
+        }
+    }
+
+    pub(crate) fn publish_mqtt(&self) -> Option<&PublishMqttConfigDto> {
+        match self {
+            CharacteristicConfig::Subscribe { publish_mqtt, .. } => publish_mqtt.as_ref(),
+            CharacteristicConfig::Poll { publish_mqtt, .. } => publish_mqtt.as_ref(),
         }
     }
 }

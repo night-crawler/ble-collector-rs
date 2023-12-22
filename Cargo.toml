@@ -45,5 +45,7 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "json"] }
 console-subscriber = "0.2"
 atty = { version = "0.2", features = [] }
 
+rumqttc = "0.23"
+
 [dev-dependencies]
 float-cmp = "0.9.0"

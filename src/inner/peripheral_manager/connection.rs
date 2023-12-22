@@ -6,7 +6,7 @@ use btleplug::api::Peripheral as _;
 use btleplug::platform::Peripheral;
 use futures_util::StreamExt;
 use tokio::time::timeout;
-use tracing::{info, info_span, warn, Span, debug};
+use tracing::{debug, info, info_span, warn, Span};
 
 use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
@@ -243,7 +243,7 @@ impl PeripheralManager {
                 fqcn: ctx.fqcn.clone(),
                 conf: Arc::clone(&ctx.characteristic_config),
             };
-            self.payload_sender.send(value).await?;
+            self.payload_sender.send(value.into()).await?;
             tokio::time::sleep(*delay_sec).await;
         }
     }
@@ -274,7 +274,7 @@ impl PeripheralManager {
                 fqcn,
                 conf,
             };
-            self.payload_sender.send(value).await?;
+            self.payload_sender.send(value.into()).await?;
         }
 
         Err(CollectorError::EndOfStream)

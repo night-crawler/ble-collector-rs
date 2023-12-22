@@ -3,11 +3,11 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use metrics::{counter, gauge, histogram, KeyName, SharedString};
 use tracing::warn;
+use crate::inner::conf::dto::publish::PublishMetricConfigDto;
 
-use crate::inner::conf::dto::characteristic::PublishMetricConfigDto;
 use crate::inner::metrics::MetricType;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
-use crate::inner::process::ProcessPayload;
+use crate::inner::process::PublishPayload;
 
 pub(crate) struct MetricPublisher {
     registered_metrics: DashMap<Arc<String>, ()>,
@@ -44,8 +44,8 @@ impl MetricPublisher {
     }
 }
 
-impl ProcessPayload for MetricPublisher {
-    fn process(&self, payload: Arc<CharacteristicPayload>) {
+impl PublishPayload for MetricPublisher {
+    fn publish(&self, payload: Arc<CharacteristicPayload>) {
         let conf = payload.conf.as_ref();
         let Some(metric_conf) = conf.publish_metrics() else {
             return;
