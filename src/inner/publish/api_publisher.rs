@@ -4,32 +4,17 @@ use std::sync::Arc;
 use btleplug::api::BDAddr;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
-use rocket::serde::Serialize;
+use serde::Serialize;
 use uuid::Uuid;
 
-use crate::inner::conv::converter::CharacteristicValue;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
-use crate::inner::process::PublishPayload;
-
-#[derive(Debug, Serialize)]
-pub(crate) struct DataPoint {
-    pub(crate) ts: DateTime<Utc>,
-    pub(crate) value: CharacteristicValue,
-}
-
-impl From<&CharacteristicPayload> for DataPoint {
-    fn from(value: &CharacteristicPayload) -> Self {
-        Self {
-            ts: value.created_at,
-            value: value.value.clone(),
-        }
-    }
-}
+use crate::inner::publish::dto::ApiDataPoint;
+use crate::inner::publish::PublishPayload;
 
 #[derive(Debug, Default, Serialize)]
 pub(crate) struct CharacteristicStorage {
     pub(crate) name: Option<Arc<String>>,
-    pub(crate) values: VecDeque<DataPoint>,
+    pub(crate) values: VecDeque<ApiDataPoint>,
     pub(crate) num_updates: usize,
 }
 
@@ -59,26 +44,17 @@ impl ApiPublisher {
         }
     }
     pub(crate) fn process(&self, payload: Arc<CharacteristicPayload>) {
-        let mut peripheral = self
-            .peripherals
-            .entry(payload.fqcn.peripheral_address)
-            .or_default();
+        let mut peripheral = self.peripherals.entry(payload.fqcn.peripheral).or_default();
 
         peripheral.updated_at = payload.created_at;
         peripheral.num_updates += 1;
 
-        let mut service = peripheral
-            .services
-            .entry(payload.fqcn.service_uuid)
-            .or_default();
+        let mut service = peripheral.services.entry(payload.fqcn.service).or_default();
 
         service.updated_at = payload.created_at;
         service.num_updates += 1;
 
-        let mut char_storage = service
-            .characteristics
-            .entry(payload.fqcn.characteristic_uuid)
-            .or_default();
+        let mut char_storage = service.characteristics.entry(payload.fqcn.characteristic).or_default();
 
         char_storage.num_updates += 1;
         char_storage.name = payload.conf.name();
@@ -86,7 +62,7 @@ impl ApiPublisher {
             char_storage.values.pop_front();
         }
 
-        let data_point = DataPoint::from(payload.as_ref());
+        let data_point = ApiDataPoint::from(payload.as_ref());
         char_storage.values.push_back(data_point);
     }
 }

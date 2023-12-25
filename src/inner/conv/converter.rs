@@ -107,24 +107,14 @@ impl Display for CharacteristicValue {
     }
 }
 
-fn compute_r(
-    value: i64,
-    multiplier: i8,
-    decimal_exponent: i32,
-    binary_exponent: i32,
-) -> CharacteristicValue {
+fn compute_r(value: i64, multiplier: i8, decimal_exponent: i32, binary_exponent: i32) -> CharacteristicValue {
     if decimal_exponent >= 0 && binary_exponent >= 0 {
-        let result = value
-            * (multiplier as i64)
-            * 10i64.pow(decimal_exponent as u32)
-            * 2i64.pow(binary_exponent as u32);
+        let result =
+            value * (multiplier as i64) * 10i64.pow(decimal_exponent as u32) * 2i64.pow(binary_exponent as u32);
         return CharacteristicValue::I64(result);
     }
 
-    let result = value as f64
-        * (multiplier as f64)
-        * 10f64.powi(decimal_exponent)
-        * 2f64.powi(binary_exponent);
+    let result = value as f64 * (multiplier as f64) * 10f64.powi(decimal_exponent) * 2f64.powi(binary_exponent);
     CharacteristicValue::F64(result)
 }
 
@@ -152,10 +142,7 @@ impl Converter {
             _ => Ok(()),
         }
     }
-    pub(crate) fn convert(
-        &self,
-        mut value: Vec<u8>,
-    ) -> Result<CharacteristicValue, ConversionError> {
+    pub(crate) fn convert(&self, mut value: Vec<u8>) -> Result<CharacteristicValue, ConversionError> {
         // assume i64 will suffice for all conversions for now
         match self {
             Self::F32 => {
@@ -200,12 +187,7 @@ mod tests {
     use super::*;
     use float_cmp::approx_eq;
 
-    fn ble_serialize(
-        num: f32,
-        multiplier: i32,
-        decimal_exponent: i32,
-        binary_exponent: i32,
-    ) -> f32 {
+    fn ble_serialize(num: f32, multiplier: i32, decimal_exponent: i32, binary_exponent: i32) -> f32 {
         let mut result = num / (multiplier as f32);
         result /= 10f32.powi(decimal_exponent);
         result /= 2f32.powi(binary_exponent);

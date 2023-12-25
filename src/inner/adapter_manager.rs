@@ -13,13 +13,13 @@ use tracing::{info, info_span, warn};
 use crate::inner::dto::{AdapterDto, PeripheralDto};
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::model::adapter_info::AdapterInfo;
-use crate::inner::model::characteristic_payload::CharacteristicPayload;
+use crate::inner::model::collector_event::CollectorEvent;
 use crate::inner::peripheral_manager::PeripheralManager;
-use crate::inner::process::FanOutSender;
+use crate::inner::publish::FanOutSender;
 
 pub(crate) struct AdapterManager {
     peripheral_managers: Mutex<Vec<Arc<PeripheralManager>>>,
-    payload_sender: Arc<FanOutSender<Arc<CharacteristicPayload>>>,
+    fanout_sender: Arc<FanOutSender<CollectorEvent>>,
     configuration_manager: Arc<ConfigurationManager>,
     app_conf: Arc<AppConf>,
 }
@@ -27,12 +27,12 @@ pub(crate) struct AdapterManager {
 impl AdapterManager {
     pub(crate) fn new(
         configuration_manager: Arc<ConfigurationManager>,
-        payload_sender: FanOutSender<Arc<CharacteristicPayload>>,
+        fanout_sender: FanOutSender<CollectorEvent>,
         app_conf: Arc<AppConf>,
     ) -> Self {
         Self {
             peripheral_managers: Default::default(),
-            payload_sender: Arc::new(payload_sender),
+            fanout_sender: Arc::new(fanout_sender),
             configuration_manager,
             app_conf,
         }
@@ -60,10 +60,11 @@ impl AdapterManager {
             .await
             .push(Arc::new(PeripheralManager::new(
                 adapter,
-                self.payload_sender.clone(),
+                self.fanout_sender.clone(),
                 self.configuration_manager.clone(),
                 Arc::clone(&self.app_conf),
                 span,
+                adapter_info,
             )));
         Ok(())
     }
@@ -103,9 +104,7 @@ impl AdapterManager {
 
         let infos = stream::iter(managers.iter())
             .map(Arc::clone)
-            .map(|adapter_service_manager| async move {
-                adapter_service_manager.adapter.adapter_info().await
-            })
+            .map(|adapter_service_manager| async move { adapter_service_manager.adapter.adapter_info().await })
             .buffered(4)
             .collect::<Vec<_>>()
             .await;
@@ -142,14 +141,13 @@ impl AdapterManager {
             .into_iter()
             .collect::<CollectorResult<Vec<_>>>()?;
 
-        let flatten_iter =
-            peripherals_per_adapter
-                .into_iter()
-                .flat_map(|(adapter_dto, peripherals)| {
-                    peripherals
-                        .into_iter()
-                        .map(move |peripheral| (adapter_dto.clone(), peripheral))
-                });
+        let flatten_iter = peripherals_per_adapter
+            .into_iter()
+            .flat_map(|(adapter_dto, peripherals)| {
+                peripherals
+                    .into_iter()
+                    .map(move |peripheral| (adapter_dto.clone(), peripheral))
+            });
 
         let intermediate_result: Vec<Arc<Mutex<AdapterDto>>> = stream::iter(flatten_iter)
             .map(|(adapter_dto, peripheral)| async move {
@@ -177,8 +175,7 @@ impl AdapterManager {
                 continue;
             }
             let mut dto = dto.clone();
-            dto.peripherals
-                .sort_unstable_by_key(|peripheral| peripheral.id.clone());
+            dto.peripherals.sort_unstable_by_key(|peripheral| peripheral.id.clone());
             result.push(dto);
         }
 

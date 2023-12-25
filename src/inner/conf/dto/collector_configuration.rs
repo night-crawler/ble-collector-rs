@@ -1,4 +1,4 @@
-use rocket::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 use crate::inner::conf::dto::peripheral::PeripheralConfigDto;
 
@@ -45,16 +45,14 @@ mod tests {
                                 name: Arc::new("test".to_string()),
                                 description: Some(Arc::new("test".to_string())),
                                 unit: Arc::new("test".to_string()),
-                                labels: Some(Arc::new(vec![(
-                                    "test".to_string(),
-                                    "test".to_string(),
-                                )])),
+                                labels: Some(Arc::new(vec![("test".to_string(), "test".to_string())])),
                             }),
                             publish_mqtt: Some(PublishMqttConfigDto {
-                                topic: Arc::new("test".to_string()),
+                                state_topic: Arc::new("test".to_string()),
                                 unit: Some(Arc::new("test".to_string())),
                                 retain: true,
                                 qos: Default::default(),
+                                discovery: None,
                             }),
                         },
                         CharacteristicConfigDto::Poll {
@@ -90,11 +88,7 @@ mod tests {
                         CharacteristicConfigDto::Poll { uuid, name, .. } => (uuid, name),
                     };
 
-                    let name = name
-                        .unwrap()
-                        .split_whitespace()
-                        .collect::<Vec<_>>()
-                        .join("");
+                    let name = name.unwrap().split_whitespace().collect::<Vec<_>>().join("");
 
                     let regex = format!("(.*)(.*)({char_uuid})");
                     let rename_pattern = format!("$1 $2 {name}");
@@ -110,12 +104,7 @@ mod tests {
                     grafana_rules.push(char_rename);
                 }
 
-                let service_name = service
-                    .name
-                    .unwrap()
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join("");
+                let service_name = service.name.unwrap().split_whitespace().collect::<Vec<_>>().join("");
                 let service_uuid = service.uuid;
                 let regex = format!("(.*)({service_uuid})(.+)");
                 let rename_pattern = format!("$1 {service_name} $3");

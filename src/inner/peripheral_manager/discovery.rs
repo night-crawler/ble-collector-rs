@@ -8,7 +8,7 @@ use btleplug::api::{Central, CentralEvent, ScanFilter};
 use futures_util::StreamExt;
 use std::sync::Arc;
 use tokio::time::timeout;
-use tracing::{info, Span};
+use tracing::{debug, info, Span};
 
 impl PeripheralManager {
     #[tracing::instrument(level="info", skip_all, parent = &self.span)]
@@ -43,12 +43,8 @@ impl PeripheralManager {
         );
 
         let mut stream = self.adapter.events().await?;
-        while let Some(event) = timeout(
-            self.app_conf.notification_stream_read_timeout,
-            stream.next(),
-        )
-        .await?
-        {
+        while let Some(event) = timeout(self.app_conf.notification_stream_read_timeout, stream.next()).await? {
+            debug!(?event, "Received CentralEvent");
             let peripheral_id = event.get_peripheral_id();
             let peripheral_key = Arc::new(self.build_peripheral_key(peripheral_id).await?);
             self.clone()
@@ -76,22 +72,18 @@ impl PeripheralManager {
             CentralEvent::DeviceDisconnected(_) => {
                 let peripheral_manager = Arc::clone(&self);
                 tokio::spawn(async move {
-                    peripheral_manager
-                        .handle_disconnect(&peripheral_key, span)
-                        .await;
+                    peripheral_manager.handle_disconnect(&peripheral_key, span).await?;
+                    Ok::<_, anyhow::Error>(())
                 });
             }
             _ => {
                 if limiter.throttle(peripheral_key.clone()).await {
+                    debug!("Throttled CentralEvent");
                     EVENT_THROTTLED_COUNT.increment();
                     return Ok(());
                 };
 
-                let Some(config) = self
-                    .configuration_manager
-                    .get_matching_config(&peripheral_key)
-                    .await
-                else {
+                let Some(config) = self.configuration_manager.get_matching_config(&peripheral_key).await else {
                     return Ok(());
                 };
                 let peripheral_manager = Arc::clone(&self);

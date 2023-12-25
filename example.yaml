@@ -20,7 +20,28 @@ peripherals:
               labels:
                 - [ 'scope', 'device' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/device_information/battery_voltage'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/device_information/battery_voltage'
+              discovery:
+                config_topic: 'homeassistant/sensor/sensor_hub_{{clean_fqcn.peripheral}}_device_information_battery_voltage/config'
+                state_topic: '{{ state_topic }}'
+                device_class: voltage
+                unit_of_measurement: "Volt"
+                value_template: "\\{{ value_json.value }}"
+                unique_id: '{{ clean_fqcn.peripheral }}'
+                device:
+                  identifiers:
+                    - '{{ clean_fqcn.peripheral }}'
+                  name: >-
+                    {{~#if (eq fqcn.peripheral 'FA:6F:EC:EE:4B:36')~}}
+                      Sensor Hub Living Room
+                    {{~else if (eq fqcn.peripheral 'D4:B7:67:56:DC:3B')~}}
+                      Sensor Hub Kitchen
+                    {{~else if (eq fqcn.peripheral 'D0:F6:3B:34:4C:1F')~}}
+                      Sensor Hub Bedroom
+                    {{~else~}}
+                      Sensor Hub {{ fqcn.peripheral }}
+                    {{~/if~}}
+
           - !Subscribe
             name: 'Temperature'
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
@@ -33,13 +54,13 @@ peripherals:
               labels:
                 - [ 'scope', 'device' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/device_information/temperature'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/device_information/temperature'
           - !Subscribe
             name: 'Debug'
             uuid: '00002bde-0000-1000-8000-00805f9b34fb'
             converter: !Utf8
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/device_information/debug'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/device_information/debug'
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4d2ba-0002-8000-8789-00805f9b34fb'
@@ -52,7 +73,7 @@ peripherals:
               labels:
                 - [ 'scope', 'device' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/device_information/timeout'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/device_information/timeout'
       - uuid: '5c853275-723b-4754-a329-969d4bc8121e'
         name: 'BME280'
         default_delay: 60s
@@ -70,7 +91,7 @@ peripherals:
               labels:
                 - [ 'scope', 'bme280' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/bme280/temperature'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/bme280/temperature'
           - !Subscribe
             name: 'Pressure'
             uuid: '00002a6d-0000-1000-8000-00805f9b34fb'
@@ -83,7 +104,7 @@ peripherals:
               labels:
                 - [ 'scope', 'bme280' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/bme280/pressure'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/bme280/pressure'
           - !Subscribe
             name: 'Humidity'
             uuid: '00002a6f-0000-1000-8000-00805f9b34fb'
@@ -96,7 +117,7 @@ peripherals:
               labels:
                 - [ 'scope', 'bme280' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/bme280/humidity'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/bme280/humidity'
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
@@ -109,7 +130,7 @@ peripherals:
               labels:
                 - [ 'scope', 'bme280' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/bme280/timeout'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/bme280/timeout'
           - !Poll
             name: 'Humidity Offset'
             uuid: 'a0e4a2ba-1234-4321-0001-00805f9b34fb'
@@ -122,7 +143,7 @@ peripherals:
               labels:
                 - [ 'scope', 'bme280' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/bme280/humidity_offset'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/bme280/humidity_offset'
           - !Poll
             name: 'Temperature Offset'
             uuid: 'a0e4a2ba-1234-4321-0002-00805f9b34fb'
@@ -135,7 +156,7 @@ peripherals:
               labels:
                 - [ 'scope', 'bme280' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/bme280/temperature_offset'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/bme280/temperature_offset'
           - !Poll
             name: 'Pressure Offset'
             uuid: 'a0e4a2ba-1234-4321-0003-00805f9b34fb'
@@ -148,7 +169,7 @@ peripherals:
               labels:
                 - [ 'scope', 'bme280' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/bme280/pressure_offset'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/bme280/pressure_offset'
       - uuid: '5c853275-823b-4754-a329-969d4bc8121e'
         name: LIS2DH12
         default_delay: 60s
@@ -166,7 +187,7 @@ peripherals:
               labels:
                 - [ 'scope', 'lis2dh12' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/lis2dh12/x_ms2'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/lis2dh12/x_ms2'
           - !Subscribe
             name: 'Y-Axis Acceleration'
             uuid: 'eaeaeaea-0000-1000-0000-00805f9b34fb'
@@ -179,7 +200,7 @@ peripherals:
               labels:
                 - [ 'scope', 'lis2dh12' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/lis2dh12/y_ms2'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/lis2dh12/y_ms2'
           - !Subscribe
             name: 'Z-Axis Acceleration'
             uuid: 'eaeaeaea-0000-2000-0000-00805f9b34fb'
@@ -192,7 +213,7 @@ peripherals:
               labels:
                 - [ 'scope', 'lis2dh12' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/lis2dh12/z_ms2'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/lis2dh12/z_ms2'
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
@@ -205,7 +226,7 @@ peripherals:
               labels:
                 - [ 'scope', 'lis2dh12' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/lis2dh12/timeout'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/lis2dh12/timeout'
       - uuid: '5c853275-723b-4754-a329-969d8bc8121d'
         name: 'ADC'
         default_delay: 60s
@@ -223,7 +244,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/voltage_0'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/voltage_0'
           - !Subscribe
             name: 'Voltage 1'
             uuid: '00002b18-0001-1000-8000-00805f9b34fb'
@@ -236,7 +257,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/voltage_1'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/voltage_1'
           - !Subscribe
             name: 'Voltage 2'
             uuid: '00002b18-0002-1000-8000-00805f9b34fb'
@@ -249,7 +270,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/voltage_2'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/voltage_2'
           - !Subscribe
             name: 'Voltage 3'
             uuid: '00002b18-0003-1000-8000-00805f9b34fb'
@@ -262,7 +283,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/voltage_3'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/voltage_3'
           - !Subscribe
             name: 'Voltage 4'
             uuid: '00002b18-0004-1000-8000-00805f9b34fb'
@@ -275,7 +296,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/voltage_4'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/voltage_4'
           - !Subscribe
             name: 'Voltage 5'
             uuid: '00002b18-0005-1000-8000-00805f9b34fb'
@@ -288,7 +309,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/voltage_5'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/voltage_5'
           - !Subscribe
             name: 'Voltage 6'
             uuid: '00002b18-0006-1000-8000-00805f9b34fb'
@@ -301,7 +322,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/voltage_6'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/voltage_6'
           - !Subscribe
             name: 'Number of Samples'
             uuid: 'A0E4D2BA-0000-8000-0000-00805f9b34fb'
@@ -314,7 +335,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/samples'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/samples'
           - !Subscribe
             name: 'Elapsed Time'
             uuid: 'A0E4D2BA-0001-8000-0000-00805f9b34fb'
@@ -327,7 +348,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/elapsed'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/elapsed'
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4d2ba-0002-8000-0000-00805f9b34fb'
@@ -340,7 +361,7 @@ peripherals:
               labels:
                 - [ 'scope', 'adc' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/nrf_adc/timeout'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/nrf_adc/timeout'
       - uuid: '5c853275-923b-4754-a329-969d4bc8121e'
         name: 'VEML6040'
         default_delay: 60s
@@ -358,7 +379,7 @@ peripherals:
               labels:
                 - [ 'scope', 'veml6040' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/veml6040/red_raw'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/veml6040/red_raw'
           - !Subscribe
             name: 'Green Color Intensity'
             uuid: 'eaeaeaea-b000-1000-0000-00805f9b34fb'
@@ -371,7 +392,7 @@ peripherals:
               labels:
                 - [ 'scope', 'veml6040' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/veml6040/green_raw'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/veml6040/green_raw'
           - !Subscribe
             name: 'Blue Color Intensity'
             uuid: 'eaeaeaea-c000-2000-0000-00805f9b34fb'
@@ -384,7 +405,7 @@ peripherals:
               labels:
                 - [ 'scope', 'veml6040' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/veml6040/blue_raw'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/veml6040/blue_raw'
           - !Subscribe
             name: 'White Color Intensity'
             uuid: 'eaeaeaea-d000-3000-0000-00805f9b34fb'
@@ -397,7 +418,7 @@ peripherals:
               labels:
                 - [ 'scope', 'veml6040' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/veml6040/white_raw'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/veml6040/white_raw'
           - !Subscribe
             name: 'Correlated Color Temperature'
             uuid: '00002AE9-0000-1000-8000-00805f9b34fb'
@@ -410,7 +431,7 @@ peripherals:
               labels:
                 - [ 'scope', 'veml6040' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/veml6040/cct'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/veml6040/cct'
           - !Subscribe
             name: 'Luminous Flux'
             uuid: '00002AFF-0000-1000-8000-00805f9b34fb'
@@ -423,7 +444,7 @@ peripherals:
               labels:
                 - [ 'scope', 'veml6040' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/veml6040/lux'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/veml6040/lux'
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
@@ -436,4 +457,4 @@ peripherals:
               labels:
                 - [ 'scope', 'veml6040' ]
             publish_mqtt:
-              topic: 'sensor_hub/{{peripheral}}/veml6040/timeout'
+              state_topic: 'sensor_hub/{{fqcn.peripheral}}/veml6040/timeout'

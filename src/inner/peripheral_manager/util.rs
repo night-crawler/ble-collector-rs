@@ -14,11 +14,8 @@ use crate::inner::model::peripheral_key::PeripheralKey;
 use crate::inner::peripheral_manager::PeripheralManager;
 
 impl PeripheralManager {
-    #[tracing::instrument(level = "info", parent = & self.span, skip(self))]
-    pub(crate) async fn get_peripheral(
-        &self,
-        peripheral: &BDAddr,
-    ) -> CollectorResult<Option<Arc<Peripheral>>> {
+    #[tracing::instrument(level = "info", skip(self))]
+    pub(crate) async fn get_peripheral(&self, peripheral: &BDAddr) -> CollectorResult<Option<Arc<Peripheral>>> {
         match self.get_cached_peripheral(peripheral).await {
             None => self.populate_cache().await?,
             existing => return Ok(existing),
@@ -75,15 +72,9 @@ impl PeripheralManager {
         Ok(())
     }
 
-    pub(super) async fn build_peripheral_key(
-        &self,
-        peripheral_id: &PeripheralId,
-    ) -> CollectorResult<PeripheralKey> {
+    pub(super) async fn build_peripheral_key(&self, peripheral_id: &PeripheralId) -> CollectorResult<PeripheralKey> {
         let mut peripheral_key = PeripheralKey::try_from(peripheral_id)?;
-        if let Some(peripheral) = self
-            .get_peripheral(&peripheral_key.peripheral_address)
-            .await?
-        {
+        if let Some(peripheral) = self.get_peripheral(&peripheral_key.peripheral_address).await? {
             if let Some(props) = peripheral.properties().await? {
                 peripheral_key.name = props.local_name;
             }
@@ -98,22 +89,13 @@ impl PeripheralManager {
         let subscribed_characteristic = self.subscribed_characteristics.lock().await;
 
         ConnectedPeripherals::new(
-            poll_handle_map.keys().map(|fqcn| fqcn.peripheral_address),
+            poll_handle_map.keys().map(|fqcn| fqcn.peripheral),
             subscription_map.keys().cloned(),
-            subscribed_characteristic
-                .keys()
-                .map(|fqcn| fqcn.peripheral_address),
+            subscribed_characteristic.keys().map(|fqcn| fqcn.peripheral),
         )
     }
 
-    pub(super) async fn get_characteristic_conf(
-        &self,
-        fqcn: &Fqcn,
-    ) -> Option<Arc<CharacteristicConfig>> {
-        self.subscribed_characteristics
-            .lock()
-            .await
-            .get(fqcn)
-            .cloned()
+    pub(super) async fn get_characteristic_conf(&self, fqcn: &Fqcn) -> Option<Arc<CharacteristicConfig>> {
+        self.subscribed_characteristics.lock().await.get(fqcn).cloned()
     }
 }

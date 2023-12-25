@@ -114,20 +114,12 @@ impl TryFrom<&AppConf> for MqttOptions {
     type Error = anyhow::Error;
 
     fn try_from(value: &AppConf) -> Result<Self, Self::Error> {
-        let sock_addr = value
-            .mqtt_address
-            .context("No mqtt broker address was specified")?;
-        let mut mqtt_options = MqttOptions::new(
-            value.mqtt_id.as_ref(),
-            sock_addr.ip().to_string(),
-            sock_addr.port(),
-        );
+        let sock_addr = value.mqtt_address.context("No mqtt broker address was specified")?;
+        let mut mqtt_options = MqttOptions::new(value.mqtt_id.as_ref(), sock_addr.ip().to_string(), sock_addr.port());
 
         mqtt_options.set_keep_alive(value.mqtt_keepalive);
 
-        if let (Some(username), Some(password)) =
-            (value.mqtt_username.as_ref(), value.mqtt_password.as_ref())
-        {
+        if let (Some(username), Some(password)) = (value.mqtt_username.as_ref(), value.mqtt_password.as_ref()) {
             mqtt_options.set_credentials(username.as_str(), password.as_str());
         }
         Ok(mqtt_options)

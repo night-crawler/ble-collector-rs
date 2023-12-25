@@ -13,7 +13,7 @@ use crate::inner::error::CollectorError;
 use crate::inner::http_error::{ApiResult, HttpError};
 use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::model::connected_peripherals::ConnectedPeripherals;
-use crate::inner::process::api_publisher::ApiPublisher;
+use crate::inner::publish::api_publisher::ApiPublisher;
 
 #[get("/adapters/describe")]
 pub(crate) async fn describe_adapters(
@@ -24,9 +24,7 @@ pub(crate) async fn describe_adapters(
 }
 
 #[get("/adapters")]
-pub(crate) async fn list_adapters(
-    adapter_manager: &rocket::State<Arc<AdapterManager>>,
-) -> ApiResult<Vec<AdapterInfo>> {
+pub(crate) async fn list_adapters(adapter_manager: &rocket::State<Arc<AdapterManager>>) -> ApiResult<Vec<AdapterInfo>> {
     let wrapped = Envelope::from(adapter_manager.list_adapters().await?);
     Ok(wrapped.into())
 }
@@ -40,9 +38,7 @@ pub(crate) async fn list_configurations(
 }
 
 #[get("/data")]
-pub(crate) async fn get_collector_data(
-    storage: &rocket::State<Arc<ApiPublisher>>,
-) -> ApiResult<Arc<ApiPublisher>> {
+pub(crate) async fn get_collector_data(storage: &rocket::State<Arc<ApiPublisher>>) -> ApiResult<Arc<ApiPublisher>> {
     Ok(Envelope::from(Arc::clone(storage)).into())
 }
 
@@ -57,8 +53,7 @@ pub(crate) async fn read_write_characteristic(
 ) -> ApiResult<PeripheralIoResponseDto> {
     let Some(peripheral_manager) = adapter_manager.get_peripheral_manager(adapter_id).await? else {
         return Err(
-            HttpError::new(CollectorError::AdapterNotFound(adapter_id.to_string()))
-                .with_status(Status::NotFound),
+            HttpError::new(CollectorError::AdapterNotFound(adapter_id.to_string())).with_status(Status::NotFound)
         );
     };
     let response = execute_batches(peripheral_manager, request.into_inner()).await;
@@ -72,8 +67,7 @@ pub(crate) async fn get_connected_peripherals(
 ) -> ApiResult<ConnectedPeripherals> {
     let Some(peripheral_manager) = adapter_manager.get_peripheral_manager(adapter_id).await? else {
         return Err(
-            HttpError::new(CollectorError::AdapterNotFound(adapter_id.to_string()))
-                .with_status(Status::NotFound),
+            HttpError::new(CollectorError::AdapterNotFound(adapter_id.to_string())).with_status(Status::NotFound)
         );
     };
     let connected_peripherals = peripheral_manager.get_all_connected_peripherals().await;

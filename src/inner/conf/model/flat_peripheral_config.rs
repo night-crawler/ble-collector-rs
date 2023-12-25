@@ -1,3 +1,9 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+use btleplug::api::Characteristic;
+use serde::{Deserialize, Serialize};
+
 use crate::inner::conf::dto::peripheral::PeripheralConfigDto;
 use crate::inner::conf::dto::service::ServiceConfigDto;
 use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
@@ -6,9 +12,6 @@ use crate::inner::conf::model::service_characteristic_key::ServiceCharacteristic
 use crate::inner::conf::traits::Evaluate;
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::model::peripheral_key::PeripheralKey;
-use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct FlatPeripheralConfig {
@@ -48,6 +51,10 @@ impl FlatPeripheralConfig {
         }
 
         Ok(())
+    }
+    pub(crate) fn get_conf(&self, characteristic: &Characteristic) -> Option<Arc<CharacteristicConfig>> {
+        let char_key = ServiceCharacteristicKey::from(characteristic);
+        self.service_map.get(&char_key).cloned()
     }
 }
 

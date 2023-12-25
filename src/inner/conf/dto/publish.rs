@@ -1,6 +1,6 @@
 use crate::inner::metrics::MetricType;
 use metrics::Label;
-use rocket::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
@@ -21,7 +21,7 @@ impl PublishMetricConfigDto {
             .collect()
     }
 }
-
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Default, Copy)]
 pub(crate) enum Qos {
     AtMostOnce,
@@ -31,13 +31,22 @@ pub(crate) enum Qos {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub(crate) struct DiscoverySettings {
+    pub(crate) config_topic: Arc<String>,
+    #[serde(flatten)]
+    pub(crate) remainder: serde_yaml::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct PublishMqttConfigDto {
-    pub(crate) topic: Arc<String>,
+    pub(crate) state_topic: Arc<String>,
     pub(crate) unit: Option<Arc<String>>,
     #[serde(default)]
     pub(crate) retain: bool,
     #[serde(default)]
     pub(crate) qos: Qos,
+
+    pub(crate) discovery: Option<Arc<DiscoverySettings>>,
 }
 
 impl PublishMqttConfigDto {

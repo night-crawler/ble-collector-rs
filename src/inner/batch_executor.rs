@@ -34,9 +34,7 @@ pub(crate) async fn execute_batches(
     let manager_stream = std::iter::repeat_with(|| Arc::clone(&peripheral_manager));
     let span = Span::current();
     let batch_responses = stream::iter(request.batches.into_iter().zip(manager_stream))
-        .map(|(batch, peripheral_manager)| async {
-            execute_batch(peripheral_manager, batch, span.clone()).await
-        })
+        .map(|(batch, peripheral_manager)| async { execute_batch(peripheral_manager, batch, span.clone()).await })
         .buffered(
             request
                 .parallelism
@@ -62,45 +60,40 @@ async fn execute_batch(
 
     let span = Span::current();
 
-    let command_responses: Vec<Option<ResultDto<Vec<u8>>>> = stream::iter(
-        batch
-            .commands
-            .into_iter()
-            .zip(manager_stream)
-            .zip(latch_stream),
-    )
-    .map(|((cmd, manager), latch)| async {
-        let span = span.clone();
-        match cmd {
-            IoCommand::Read { .. } => {
-                let read_result = read_value_with_timeout(manager, latch, cmd, span).await;
-                Some(read_result.into())
-            }
-            IoCommand::Write { .. } => {
-                if let Err(err) = write_value_with_timeout(manager, latch, cmd, span).await {
-                    Some(Err(err).into())
-                } else {
-                    None
+    let command_responses: Vec<Option<ResultDto<Vec<u8>>>> =
+        stream::iter(batch.commands.into_iter().zip(manager_stream).zip(latch_stream))
+            .map(|((cmd, manager), latch)| async {
+                let span = span.clone();
+                match cmd {
+                    IoCommand::Read { .. } => {
+                        let read_result = read_value_with_timeout(manager, latch, cmd, span).await;
+                        Some(read_result.into())
+                    }
+                    IoCommand::Write { .. } => {
+                        if let Err(err) = write_value_with_timeout(manager, latch, cmd, span).await {
+                            Some(Err(err).into())
+                        } else {
+                            None
+                        }
+                    }
                 }
-            }
-        }
-    })
-    .buffered(
-        batch
-            .parallelism
-            .map(BoundedUsize::get)
-            .unwrap_or(peripheral_manager.app_conf.default_batch_parallelism),
-    )
-    .collect::<Vec<_>>()
-    .await;
+            })
+            .buffered(
+                batch
+                    .parallelism
+                    .map(BoundedUsize::get)
+                    .unwrap_or(peripheral_manager.app_conf.default_batch_parallelism),
+            )
+            .collect::<Vec<_>>()
+            .await;
 
     PeripheralIoBatchResponseDto { command_responses }
 }
 
 #[tracing::instrument(level = "info", skip_all, parent = &_parent_span, err, fields(
-    peripheral = %cmd.get_fqcn().peripheral_address,
-    service = %cmd.get_fqcn().service_uuid,
-    characteristic = %cmd.get_fqcn().characteristic_uuid,
+    peripheral = %cmd.get_fqcn().peripheral,
+    service = %cmd.get_fqcn().service,
+    characteristic = %cmd.get_fqcn().characteristic,
     timeout = ?cmd.get_timeout(),
 ))]
 async fn read_value_with_timeout(
@@ -109,9 +102,7 @@ async fn read_value_with_timeout(
     cmd: IoCommand,
     _parent_span: Span,
 ) -> CollectorResult<Vec<u8>> {
-    let timeout_duration = cmd
-        .get_timeout()
-        .unwrap_or(manager.app_conf.default_read_timeout);
+    let timeout_duration = cmd.get_timeout().unwrap_or(manager.app_conf.default_read_timeout);
     let result = tokio::time::timeout(timeout_duration, read_value(manager, latch, cmd)).await??;
     Ok(result)
 }
@@ -161,9 +152,9 @@ async fn read_value(
 }
 
 #[tracing::instrument(level = "info", skip_all, parent = &_parent_span, err, fields(
-    peripheral = %cmd.get_fqcn().peripheral_address,
-    service = %cmd.get_fqcn().service_uuid,
-    characteristic = %cmd.get_fqcn().characteristic_uuid,
+    peripheral = %cmd.get_fqcn().peripheral,
+    service = %cmd.get_fqcn().service,
+    characteristic = %cmd.get_fqcn().characteristic,
 ))]
 async fn write_value_with_timeout(
     manager: Arc<PeripheralManager>,
@@ -171,9 +162,7 @@ async fn write_value_with_timeout(
     cmd: IoCommand,
     _parent_span: Span,
 ) -> CollectorResult<()> {
-    let timeout_duration = cmd
-        .get_timeout()
-        .unwrap_or(manager.app_conf.default_write_timeout);
+    let timeout_duration = cmd.get_timeout().unwrap_or(manager.app_conf.default_write_timeout);
     tokio::time::timeout(timeout_duration, write_value(manager, latch, cmd)).await??;
     Ok(())
 }

@@ -26,9 +26,7 @@ impl TryFrom<&PeripheralId> for PeripheralKey {
         let serialized = serde_json::to_value(value)?;
         let deserialized: HashMap<String, String> = serde_json::from_value(serialized)?;
         let path = deserialized.into_values().next().context("No values")?;
-        let path = path
-            .strip_prefix("/org/bluez/")
-            .context("No /org/bluez prefix")?;
+        let path = path.strip_prefix("/org/bluez/").context("No /org/bluez prefix")?;
         let (adapter, address) = path.rsplit_once('/').context("No / delimiter")?;
         let address = address.strip_prefix("dev_").context("No dev_ prefix")?;
         let address = address.replace('_', ":");

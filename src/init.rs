@@ -12,24 +12,26 @@ use metrics_util::MetricKindMask;
 use rocket::{routes, Build, Rocket};
 use rumqttc::v5::MqttOptions;
 use tokio::task::JoinSet;
-use tracing::debug;
+use tracing::error;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
 
 use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::api::{
-    describe_adapters, get_collector_data, get_connected_peripherals, get_metrics, list_adapters,
-    list_configurations, read_write_characteristic,
+    describe_adapters, get_collector_data, get_connected_peripherals, get_metrics, list_adapters, list_configurations,
+    read_write_characteristic,
 };
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::error::CollectorError;
 use crate::inner::metrics::describe_metrics;
-use crate::inner::model::characteristic_payload::CharacteristicPayload;
-use crate::inner::process::api_publisher::ApiPublisher;
-use crate::inner::process::metric_publisher::MetricPublisher;
-use crate::inner::process::multi_publisher::MultiPublisher;
-use crate::inner::process::PublishPayload;
+use crate::inner::model::collector_event::CollectorEvent;
+use crate::inner::publish::api_publisher::ApiPublisher;
+use crate::inner::publish::dto::MqttDataPoint;
+use crate::inner::publish::metric_publisher::MetricPublisher;
+use crate::inner::publish::mqtt_interpolator::MqttInterpolator;
+use crate::inner::publish::multi_publisher::MultiPublisher;
+use crate::inner::publish::PublishPayload;
 
 pub(super) fn init_tracing() -> anyhow::Result<()> {
     let metrics_layer = MetricsLayer::new();
@@ -82,7 +84,7 @@ pub(super) fn init_prometheus(idle_timeout: Duration) -> anyhow::Result<Promethe
 pub(super) fn init_multi_publisher(
     api_publisher: &Arc<ApiPublisher>,
     metric_publisher: &Arc<MetricPublisher>,
-    payload_receiver: kanal::Receiver<Arc<CharacteristicPayload>>,
+    payload_receiver: kanal::Receiver<CollectorEvent>,
 ) -> Arc<MultiPublisher> {
     let api_publisher = Arc::clone(api_publisher);
     let payload_storage_processor: Arc<dyn PublishPayload + Sync + Send> = api_publisher;
@@ -129,36 +131,45 @@ pub(super) fn init_rocket(
 
 pub(super) async fn init_mqtt(
     opts: MqttOptions,
-    payload_receiver: AsyncReceiver<Arc<CharacteristicPayload>>,
+    payload_receiver: AsyncReceiver<CollectorEvent>,
     cap: usize,
     join_set: &mut JoinSet<anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
     let (mqtt_client, mut event_loop) = rumqttc::v5::AsyncClient::new(opts, cap);
+    let interpolator = MqttInterpolator::default();
 
     join_set.spawn(async move {
         let mut stream = payload_receiver.stream();
-        while let Some(payload) = stream.next().await {
-            let Some(mqtt_conf) = payload.conf.publish_mqtt() else {
-                continue;
-            };
-            let data = serde_json::to_string(&payload.value)?;
+        while let Some(collector_event) = stream.next().await {
+            match collector_event {
+                CollectorEvent::Payload(payload) => {
+                    let Some(mqtt_conf) = payload.conf.publish_mqtt() else {
+                        continue;
+                    };
 
-            let topic = mqtt_conf
-                .topic
-                .as_str()
-                .replace(
-                    "{{peripheral}}",
-                    &payload.fqcn.peripheral_address.to_string(),
-                )
-                .replace("{{service}}", &payload.fqcn.service_uuid.to_string())
-                .replace(
-                    "{{characteristic}}",
-                    &payload.fqcn.characteristic_uuid.to_string(),
-                );
+                    let state_topic = interpolator.interpolate_state_topic(mqtt_conf.state_topic.as_str(), &payload)?;
+                    let data_point = serde_json::to_string(&MqttDataPoint::from(payload.as_ref()))?;
+                    mqtt_client
+                        .publish(state_topic, mqtt_conf.qos(), mqtt_conf.retain, data_point)
+                        .await?;
+                }
+                CollectorEvent::Connect(fqcn, char_conf) => {
+                    let Some(mqtt_conf) = char_conf.publish_mqtt() else {
+                        continue;
+                    };
 
-            mqtt_client
-                .publish(topic, mqtt_conf.qos(), mqtt_conf.retain, data)
-                .await?;
+                    let payload = match interpolator.interpolate_discovery(fqcn, mqtt_conf) {
+                        Ok(payload) => payload,
+                        Err(CollectorError::NoMqttDiscoveryConfig) => continue,
+                        err => err?,
+                    };
+                    let discovery_data = serde_json::to_string(&payload.discovery_config)?;
+                    mqtt_client
+                        .publish(payload.config_topic, mqtt_conf.qos(), mqtt_conf.retain, discovery_data)
+                        .await?;
+                }
+                CollectorEvent::Disconnect(_fqcn, _char_conf) => {}
+            }
         }
 
         Err::<(), anyhow::Error>(CollectorError::EndOfStream.into())
@@ -166,8 +177,7 @@ pub(super) async fn init_mqtt(
 
     join_set.spawn(async move {
         loop {
-            let event = event_loop.poll().await?;
-            debug!(?event, "MQTT event");
+            let _event = event_loop.poll().await?;
         }
     });
 

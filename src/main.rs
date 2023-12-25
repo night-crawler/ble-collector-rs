@@ -5,16 +5,16 @@ use rumqttc::v5::MqttOptions;
 use tokio::task::JoinSet;
 use tracing::warn;
 
-use inner::process::api_publisher::ApiPublisher;
+use inner::publish::api_publisher::ApiPublisher;
 
 use crate::init::{init_mqtt, init_multi_publisher, init_prometheus, init_rocket, init_tracing};
 use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::dto::collector_configuration::CollectorConfigurationDto;
 use crate::inner::conf::manager::ConfigurationManager;
-use crate::inner::model::characteristic_payload::CharacteristicPayload;
-use crate::inner::process::metric_publisher::MetricPublisher;
-use crate::inner::process::FanOutSender;
+use crate::inner::model::collector_event::CollectorEvent;
+use crate::inner::publish::metric_publisher::MetricPublisher;
+use crate::inner::publish::FanOutSender;
 
 mod init;
 mod inner;
@@ -33,13 +33,12 @@ async fn main() -> anyhow::Result<()> {
         .add_peripherals(collector_conf.peripherals)
         .await?;
 
-    let (payload_sender, payload_receiver) = kanal::unbounded_async::<Arc<CharacteristicPayload>>();
+    let (payload_sender, payload_receiver) = kanal::unbounded_async::<CollectorEvent>();
     let mut fanout_sender = FanOutSender::new(vec![payload_sender]);
 
     match MqttOptions::try_from(app_conf.as_ref()) {
         Ok(opts) => {
-            let (mqtt_sender, mqtt_receiver) =
-                kanal::unbounded_async::<Arc<CharacteristicPayload>>();
+            let (mqtt_sender, mqtt_receiver) = kanal::unbounded_async::<CollectorEvent>();
             fanout_sender.add(mqtt_sender);
             init_mqtt(opts, mqtt_receiver, app_conf.mqtt_cap, &mut join_set).await?;
         }
@@ -57,11 +56,7 @@ async fn main() -> anyhow::Result<()> {
 
     let api_publisher = Arc::new(ApiPublisher::new());
     let metric_publisher = Arc::new(MetricPublisher::new());
-    let multi_publisher = init_multi_publisher(
-        &api_publisher,
-        &metric_publisher,
-        payload_receiver.clone_sync(),
-    );
+    let multi_publisher = init_multi_publisher(&api_publisher, &metric_publisher, payload_receiver.clone_sync());
 
     {
         let adapter_manager = adapter_manager.clone();

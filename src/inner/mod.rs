@@ -12,4 +12,4 @@ mod key_lock;
 pub(crate) mod metrics;
 pub(crate) mod model;
 pub(crate) mod peripheral_manager;
-pub(crate) mod process;
+pub(crate) mod publish;

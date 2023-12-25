@@ -1,5 +1,5 @@
 use metrics::{counter, gauge, KeyName, SharedString, Unit};
-use rocket::serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]

@@ -60,6 +60,18 @@ pub(crate) enum CollectorError {
 
     #[error("Tracing filter parse error: {0}")]
     AcquireError(#[from] tokio::sync::AcquireError),
+
+    #[error("No MQTT config")]
+    NoMqttDiscoveryConfig,
+
+    #[error("Serde JSON error: {0}")]
+    SerdeJsonError(#[from] serde_json::Error),
+
+    #[error("Handlebars error: {0}")]
+    RenderError(#[from] handlebars::RenderError),
+
+    #[error("Invalid MQTT config: {0}")]
+    InvalidMqttConfig(String),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

@@ -2,7 +2,10 @@ use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use std::sync::Arc;
 
 pub(crate) mod api_publisher;
+pub(crate) mod dto;
 pub(crate) mod metric_publisher;
+pub(crate) mod mqtt_discovery_payload;
+pub(crate) mod mqtt_interpolator;
 pub(crate) mod multi_publisher;
 
 pub(crate) trait PublishPayload {
@@ -10,7 +13,7 @@ pub(crate) trait PublishPayload {
 }
 
 pub(crate) struct FanOutSender<T> {
-    pub(crate) senders: Vec<kanal::AsyncSender<T>>,
+    senders: Vec<kanal::AsyncSender<T>>,
 }
 
 impl<T> FanOutSender<T> {

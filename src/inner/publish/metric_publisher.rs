@@ -7,7 +7,7 @@ use tracing::warn;
 
 use crate::inner::metrics::MetricType;
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
-use crate::inner::process::PublishPayload;
+use crate::inner::publish::PublishPayload;
 
 pub(crate) struct MetricPublisher {
     registered_metrics: DashMap<Arc<String>, ()>,

@@ -27,7 +27,7 @@ pub(crate) enum CharacteristicConfig {
         publish_mqtt: Option<PublishMqttConfigDto>,
     },
     Poll {
-        name: Option<Arc<String>>,
+        characteristic_name: Option<Arc<String>>,
         uuid: Uuid,
         service_name: Option<Arc<String>>,
         service_uuid: Uuid,
@@ -44,9 +44,7 @@ pub(crate) enum CharacteristicConfig {
 impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicConfig {
     type Error = CollectorError;
 
-    fn try_from(
-        (char_conf, service_conf): (&CharacteristicConfigDto, &ServiceConfigDto),
-    ) -> Result<Self, Self::Error> {
+    fn try_from((char_conf, service_conf): (&CharacteristicConfigDto, &ServiceConfigDto)) -> Result<Self, Self::Error> {
         let service_name = service_conf.name.clone();
         let service_uuid = service_conf.uuid;
 
@@ -77,7 +75,7 @@ impl TryFrom<(&CharacteristicConfigDto, &ServiceConfigDto)> for CharacteristicCo
                 publish_metrics,
                 publish_mqtt,
             } => Ok(CharacteristicConfig::Poll {
-                name: name.clone(),
+                characteristic_name: name.clone(),
                 uuid: *uuid,
                 service_name,
                 service_uuid,
@@ -95,7 +93,10 @@ impl CharacteristicConfig {
     pub(crate) fn name(&self) -> Option<Arc<String>> {
         match self {
             CharacteristicConfig::Subscribe { name, .. } => name.clone(),
-            CharacteristicConfig::Poll { name, .. } => name.clone(),
+            CharacteristicConfig::Poll {
+                characteristic_name: name,
+                ..
+            } => name.clone(),
         }
     }
 
@@ -114,12 +115,8 @@ impl CharacteristicConfig {
 
     pub(crate) fn publish_metrics(&self) -> Option<&PublishMetricConfigDto> {
         match self {
-            CharacteristicConfig::Subscribe {
-                publish_metrics, ..
-            } => publish_metrics.as_ref(),
-            CharacteristicConfig::Poll {
-                publish_metrics, ..
-            } => publish_metrics.as_ref(),
+            CharacteristicConfig::Subscribe { publish_metrics, .. } => publish_metrics.as_ref(),
+            CharacteristicConfig::Poll { publish_metrics, .. } => publish_metrics.as_ref(),
         }
     }
 

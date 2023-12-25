@@ -16,10 +16,7 @@ pub(super) struct ConnectionContext {
 
 impl Display for ConnectionContext {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let name = self
-            .characteristic_config
-            .name()
-            .unwrap_or(Arc::new("".to_string()));
+        let name = self.characteristic_config.name().unwrap_or(Arc::new("".to_string()));
         write!(
             f,
             "{}[{}]::{}/{name}[{}]",

@@ -4,9 +4,7 @@ use std::fmt::Debug;
 use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::model::fqcn::Fqcn;
 use bounded_integer::BoundedUsize;
-use btleplug::api::{
-    BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service, WriteType,
-};
+use btleplug::api::{BDAddr, Characteristic, Descriptor, Peripheral as _, PeripheralProperties, Service, WriteType};
 use btleplug::platform::Peripheral;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
@@ -56,11 +54,7 @@ impl From<Service> for ServiceDto {
         Self {
             uuid: value.uuid,
             primary: value.primary,
-            characteristics: value
-                .characteristics
-                .into_iter()
-                .map(CharacteristicDto::from)
-                .collect(),
+            characteristics: value.characteristics.into_iter().map(CharacteristicDto::from).collect(),
         }
     }
 }
@@ -113,11 +107,7 @@ impl From<Characteristic> for CharacteristicDto {
                 .map(|(name, _)| name)
                 .map(CharPropDto::from)
                 .collect(),
-            descriptors: value
-                .descriptors
-                .into_iter()
-                .map(DescriptorDto::from)
-                .collect(),
+            descriptors: value.descriptors.into_iter().map(DescriptorDto::from).collect(),
         }
     }
 }

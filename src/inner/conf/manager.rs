@@ -15,10 +15,7 @@ pub(crate) struct ConfigurationManager {
 }
 
 impl ConfigurationManager {
-    pub(crate) async fn add_peripherals(
-        &self,
-        peripheral_configs: Vec<PeripheralConfigDto>,
-    ) -> CollectorResult<()> {
+    pub(crate) async fn add_peripherals(&self, peripheral_configs: Vec<PeripheralConfigDto>) -> CollectorResult<()> {
         let mut unique_names = HashSet::new();
         for service in peripheral_configs.iter() {
             let service_name = service.name.clone();
@@ -30,9 +27,7 @@ impl ConfigurationManager {
         let mut existing_services = self.peripheral_map.lock().await;
         for peripheral_config in peripheral_configs.iter() {
             if existing_services.contains_key(&peripheral_config.name) {
-                return Err(CollectorError::DuplicateConfiguration(
-                    peripheral_config.name.clone(),
-                ));
+                return Err(CollectorError::DuplicateConfiguration(peripheral_config.name.clone()));
             }
         }
 
@@ -43,15 +38,10 @@ impl ConfigurationManager {
 
         Ok(())
     }
-    pub(crate) async fn add_peripheral_config(
-        &self,
-        peripheral_config: PeripheralConfigDto,
-    ) -> CollectorResult<()> {
+    pub(crate) async fn add_peripheral_config(&self, peripheral_config: PeripheralConfigDto) -> CollectorResult<()> {
         let existing_services = self.peripheral_map.lock().await;
         if existing_services.contains_key(&peripheral_config.name) {
-            return Err(CollectorError::DuplicateConfiguration(
-                peripheral_config.name,
-            ));
+            return Err(CollectorError::DuplicateConfiguration(peripheral_config.name));
         }
         let flat_conf = FlatPeripheralConfig::try_from(peripheral_config)?;
         self.peripheral_map
