@@ -17,6 +17,7 @@ use crate::inner::metrics::{
 };
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::model::collector_event::CollectorEvent;
+use crate::inner::model::connect_peripheral_request::ConnectPeripheralRequest;
 use crate::inner::model::fqcn::Fqcn;
 use crate::inner::model::peripheral_key::PeripheralKey;
 use crate::inner::peripheral_manager::connection_context::ConnectionContext;
@@ -26,7 +27,7 @@ impl PeripheralManager {
     #[tracing::instrument(level = "info", skip_all, parent = & _parent_span, err)]
     pub(super) async fn connect_all(
         self: Arc<Self>,
-        peripheral_key: &PeripheralKey,
+        peripheral_key: Arc<PeripheralKey>,
         peripheral_config: Arc<FlatPeripheralConfig>,
         _parent_span: Span,
     ) -> CollectorResult<()> {
@@ -60,7 +61,11 @@ impl PeripheralManager {
             };
 
             self.fanout_sender
-                .send(CollectorEvent::Connect(fqcn.clone(), characteristic_config.clone()))
+                .send(CollectorEvent::Connect(ConnectPeripheralRequest {
+                    peripheral_key: peripheral_key.clone(),
+                    fqcn: fqcn.clone(),
+                    conf: characteristic_config.clone(),
+                }))
                 .await?;
 
             let ctx = ConnectionContext {

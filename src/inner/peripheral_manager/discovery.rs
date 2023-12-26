@@ -90,7 +90,7 @@ impl PeripheralManager {
                 tokio::spawn(async move {
                     if peripheral_manager
                         .clone()
-                        .connect_all(&peripheral_key, config, span.clone())
+                        .connect_all(peripheral_key, config, span.clone())
                         .await
                         .is_err()
                     {

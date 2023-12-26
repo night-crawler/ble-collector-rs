@@ -33,6 +33,12 @@ pub(crate) enum Qos {
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct DiscoverySettings {
     pub(crate) config_topic: Arc<String>,
+
+    #[serde(default)]
+    pub(crate) retain: Option<bool>,
+    #[serde(default)]
+    pub(crate) qos: Option<Qos>,
+
     #[serde(flatten)]
     pub(crate) remainder: serde_yaml::Value,
 }

@@ -59,13 +59,6 @@ async fn main() -> anyhow::Result<()> {
     let multi_publisher = init_multi_publisher(&api_publisher, &metric_publisher, payload_receiver.clone_sync());
 
     {
-        let adapter_manager = adapter_manager.clone();
-        join_set.spawn(async move {
-            adapter_manager.start_discovery().await?;
-            Ok(())
-        });
-    }
-    {
         let sync_multi_publisher = multi_publisher.clone();
         join_set.spawn_blocking(|| {
             let handle = std::thread::spawn(move || {
@@ -76,20 +69,30 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         });
     }
+    {
+        let adapter_manager = adapter_manager.clone();
+        join_set.spawn(async move {
+            init_rocket(
+                configuration_manager,
+                adapter_manager,
+                api_publisher,
+                prometheus_handle,
+                app_conf.listen_address,
+            )
+            .launch()
+            .await?;
 
-    join_set.spawn(async move {
-        init_rocket(
-            configuration_manager,
-            adapter_manager,
-            api_publisher,
-            prometheus_handle,
-            app_conf.listen_address,
-        )
-        .launch()
-        .await?;
+            Ok(())
+        });
+    }
 
-        Ok(())
-    });
+    {
+        let adapter_manager = adapter_manager.clone();
+        join_set.spawn(async move {
+            adapter_manager.start_discovery().await?;
+            Ok(())
+        });
+    }
 
     if let Some(result) = join_set.join_next().await {
         warn!("Main has ended: {result:?}");

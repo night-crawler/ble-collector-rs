@@ -1,17 +1,18 @@
 use std::sync::Arc;
 
-use handlebars::Handlebars;
+use rhai::{Dynamic, Scope};
+use rumqttc::v5::mqttbytes::QoS;
 use serde::Serialize;
 
-use crate::inner::conf::dto::publish::PublishMqttConfigDto;
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
+use crate::inner::model::connect_peripheral_request::ConnectPeripheralRequest;
 use crate::inner::model::fqcn::Fqcn;
 use crate::inner::publish::mqtt_discovery_payload::MqttDiscoveryPayload;
 
 #[derive(Debug, Default)]
 pub(crate) struct MqttInterpolator {
-    hbs: Handlebars<'static>,
+    engine: rhai::Engine,
 }
 
 #[derive(Debug, Serialize)]
@@ -21,21 +22,83 @@ struct CleanFqcn {
     characteristic: String,
 }
 
+/// (alphanumerics, underscore and hyphen)
+fn clean_str(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' => c,
+            '-' | '_' => c,
+            _ => '_',
+        })
+        .collect()
+}
+
+impl From<&Fqcn> for CleanFqcn {
+    fn from(value: &Fqcn) -> Self {
+        CleanFqcn {
+            peripheral: clean_str(&value.peripheral.to_string()),
+            service: clean_str(&value.service.to_string()),
+            characteristic: clean_str(&value.characteristic.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct Context {
     fqcn: Arc<Fqcn>,
     clean_fqcn: CleanFqcn,
+    service_name: Option<Arc<String>>,
+    clean_service_name: Option<String>,
+    characteristic_name: Option<Arc<String>>,
+    clean_characteristic_name: Option<String>,
+    peripheral_name: Option<String>,
+    clean_peripheral_name: Option<String>,
+}
+
+impl TryFrom<Context> for Dynamic {
+    type Error = CollectorError;
+
+    fn try_from(value: Context) -> Result<Self, Self::Error> {
+        Ok(rhai::serde::to_dynamic(value)?)
+    }
+}
+
+impl TryFrom<Context> for Scope<'_> {
+    type Error = CollectorError;
+
+    fn try_from(value: Context) -> Result<Self, Self::Error> {
+        let mut scope = Scope::new();
+        scope.push("ctx", Dynamic::try_from(value)?);
+        Ok(scope)
+    }
 }
 
 impl From<&CharacteristicPayload> for Context {
     fn from(value: &CharacteristicPayload) -> Self {
         Self {
             fqcn: value.fqcn.clone(),
-            clean_fqcn: CleanFqcn {
-                peripheral: value.fqcn.peripheral.to_string().replace(':', "_"),
-                service: value.fqcn.service.to_string().replace('-', "_"),
-                characteristic: value.fqcn.characteristic.to_string().replace('-', "_"),
-            },
+            clean_fqcn: CleanFqcn::from(value.fqcn.as_ref()),
+            service_name: value.conf.service_name().clone(),
+            clean_service_name: value.conf.service_name().map(|s| clean_str(s.as_str())),
+            characteristic_name: value.conf.name().clone(),
+            clean_characteristic_name: value.conf.name().map(|s| clean_str(s.as_str())),
+            peripheral_name: None, // TODO: pass through peripheral key as well?
+            clean_peripheral_name: None,
+        }
+    }
+}
+
+impl From<&ConnectPeripheralRequest> for Context {
+    fn from(value: &ConnectPeripheralRequest) -> Self {
+        Context {
+            fqcn: value.fqcn.clone(),
+            clean_fqcn: CleanFqcn::from(value.fqcn.as_ref()),
+            service_name: value.conf.service_name().clone(),
+            clean_service_name: value.conf.service_name().map(|s| clean_str(s.as_str())),
+            characteristic_name: value.conf.name().clone(),
+            clean_characteristic_name: value.conf.name().map(|s| clean_str(s.as_str())),
+            peripheral_name: value.peripheral_key.name.clone(),
+            clean_peripheral_name: value.peripheral_key.name.as_ref().map(|s| clean_str(s.as_str())),
         }
     }
 }
@@ -46,71 +109,67 @@ impl MqttInterpolator {
         topic: &str,
         value: &CharacteristicPayload,
     ) -> CollectorResult<String> {
-        let ctx = serde_json::to_value(Context::from(value))?;
-        let topic = self.hbs.render_template(topic, &ctx)?;
-        Ok(topic)
+        let mut scope = Scope::try_from(Context::from(value))?;
+        let result: String = self.eval(&mut scope, topic)?;
+        Ok(result)
     }
 
     pub(crate) fn interpolate_discovery(
         &self,
-        fqcn: Arc<Fqcn>,
-        mqtt_conf: &PublishMqttConfigDto,
+        request: ConnectPeripheralRequest,
     ) -> CollectorResult<MqttDiscoveryPayload> {
+        let Some(mqtt_conf) = request.conf.publish_mqtt() else {
+            return Err(CollectorError::NoMqttConfig);
+        };
         let Some(discovery) = mqtt_conf.discovery.as_ref() else {
             return Err(CollectorError::NoMqttDiscoveryConfig);
         };
-        let mut ctx = serde_json::to_value(Context {
-            fqcn: fqcn.clone(),
-            clean_fqcn: CleanFqcn {
-                peripheral: fqcn.peripheral.to_string().replace(':', "_"),
-                service: fqcn.service.to_string().replace('-', "_"),
-                characteristic: fqcn.characteristic.to_string().replace('-', "_"),
-            },
-        })?;
-        let state_topic = self.hbs.render_template(mqtt_conf.state_topic.as_str(), &ctx)?;
-        let config_topic = self.hbs.render_template(discovery.config_topic.as_str(), &ctx)?;
 
-        // add payload_topic to the context
-        if let serde_json::Value::Object(ctx) = &mut ctx {
-            ctx.insert(
-                "state_topic".to_string(),
-                serde_json::Value::String(state_topic.clone()),
-            );
-            ctx.insert(
-                "config_topic".to_string(),
-                serde_json::Value::String(config_topic.clone()),
-            );
-        } else {
-            return Err(CollectorError::InvalidMqttConfig(ctx.to_string()));
-        }
+        let ctx = Context::from(&request);
+        let mut scope = Scope::try_from(ctx)?;
+
+        let state_topic: String = self.eval(&mut scope, mqtt_conf.state_topic.as_str())?;
+        let config_topic: String = self.eval(&mut scope, discovery.config_topic.as_str())?;
+
+        scope // add topics to the context
+            .push("state_topic", state_topic)
+            .push("config_topic", config_topic.clone());
 
         let mut interpolated_mqtt_conf = serde_json::to_value(&discovery.remainder)?;
-        self.interpolate_value(&mut interpolated_mqtt_conf, &ctx)?;
+        self.interpolate_value(&mut interpolated_mqtt_conf, &mut scope)?;
 
         Ok(MqttDiscoveryPayload {
             config_topic,
             discovery_config: Some(interpolated_mqtt_conf),
+            retain: discovery.retain.unwrap_or(mqtt_conf.retain),
+            qos: discovery.qos.map(QoS::from).unwrap_or(mqtt_conf.qos()),
         })
     }
 
-    fn interpolate_value(
-        &self,
-        value: &mut serde_json::Value,
-        ctx: &serde_json::Value,
-    ) -> Result<(), handlebars::RenderError> {
+    #[tracing::instrument(skip(self, scope), err)]
+    fn eval(&self, scope: &mut Scope, expr: &str) -> CollectorResult<String> {
+        let result = self.engine.eval_with_scope(scope, expr);
+        match result {
+            Ok(result) => Ok(result),
+            Err(e) => Err(CollectorError::EvalError(expr.to_string(), e)),
+        }
+    }
+
+    #[tracing::instrument(skip(self, scope), err)]
+    fn interpolate_value(&self, value: &mut serde_json::Value, scope: &mut Scope) -> CollectorResult<()> {
         match value {
             serde_json::Value::String(s) => {
-                let rendered = self.hbs.render_template(s, ctx)?;
+                let rendered = self.eval(scope, s)?;
                 *value = serde_json::Value::String(rendered);
             }
             serde_json::Value::Array(a) => {
                 for v in a {
-                    self.interpolate_value(v, ctx)?;
+                    self.interpolate_value(v, scope)?;
                 }
             }
             serde_json::Value::Object(o) => {
                 for (_, v) in o {
-                    self.interpolate_value(v, ctx)?;
+                    self.interpolate_value(v, scope)?;
                 }
             }
             _ => {}
@@ -133,30 +192,27 @@ mod tests {
     use crate::inner::model::adapter_info::AdapterInfo;
     use crate::inner::model::characteristic_payload::CharacteristicPayload;
     use crate::inner::model::fqcn::Fqcn;
+    use crate::inner::model::peripheral_key::PeripheralKey;
 
     use super::*;
 
     #[test]
     fn test_mqtt_payload_interpolation() {
         let config = json! {{
-           "device_class":"temperature",
-           "state_topic":"{{state_topic}}",
-           "unit_of_measurement":"°C",
-           "value_template":"\\{{ value_json.temperature }}",
-           "unique_id":"temp01ae",
+           "device_class":"`temperature`",
+           "state_topic":"`${state_topic}`",
+           "unit_of_measurement":"`°C`",
+           "value_template":"`{{ value_json.temperature }}`",
+           "unique_id":"`temp01ae`",
            "device":{
-              "identifiers":[
-                 "{{~#if (eq fqcn.peripheral '11:22:33:44:55:66')~}}
-                    sample
-                  {{~else~}}
-                    {{~peripheral~}}
-                  {{~/if~}}"
-              ],
-              "name":"{{~#if (eq fqcn.peripheral '11:22:33:44:55:66')~}}
-                {{~clean_fqcn.peripheral~}}
-              {{~else~}}
-                {{~peripheral~}}
-              {{~/if~}}",
+              "identifiers":[r###"
+                  switch ctx.fqcn.peripheral {
+                    "11:22:33:44:55:66" => `${ctx.clean_service_name.to_lower()}-${ctx.clean_characteristic_name.to_lower()}-${ctx.clean_peripheral_name.to_lower()}`,
+                    _ => "unknown"
+                  }
+              "###,
+                ],
+              "name":"`name`",
            }
         }};
         let config: serde_yaml::Value = serde_json::from_value(config).unwrap();
@@ -168,18 +224,20 @@ mod tests {
         });
 
         let mqtt_conf = PublishMqttConfigDto {
-            state_topic: Arc::new("test-{{ clean_fqcn.peripheral }}".to_string()),
-            unit: Some(Arc::new("test-{{peripheral}}-test".to_string())),
+            state_topic: Arc::new("`test-${ctx.clean_fqcn.peripheral}`".to_string()),
+            unit: Some(Arc::new("`test-${ctx.peripheral}-test`".to_string())),
             retain: true,
             qos: Default::default(),
             discovery: Some(Arc::new(DiscoverySettings {
-                config_topic: Arc::new("config-test-{{clean_fqcn.peripheral}}".to_string()),
+                config_topic: Arc::new("`config-test-${ctx.clean_fqcn.peripheral}`".to_string()),
+                retain: Default::default(),
+                qos: Default::default(),
                 remainder: config,
             })),
         };
 
         let char_conf = Arc::new(CharacteristicConfig::Subscribe {
-            name: Some("name-test".to_string().into()),
+            name: Some("name test".to_string().into()),
             service_name: Some("service-name-test".to_string().into()),
             service_uuid: "0000180f-0000-1000-8000-00805f9b34fb".parse().unwrap(),
             uuid: "00002a19-0000-1000-8000-00805f9b34fb".parse().unwrap(),
@@ -193,26 +251,39 @@ mod tests {
             fqcn: fqcn.clone(),
             value: CharacteristicValue::F64(42.0),
             created_at: Utc::now(),
-            conf: char_conf,
+            conf: char_conf.clone(),
             adapter_info: Arc::new(AdapterInfo {
                 id: "hci0".to_string(),
                 modalias: "smth".to_string(),
             }),
         };
 
+        let peripheral_key = Arc::new(PeripheralKey {
+            adapter_id: "hci0".to_string(),
+            peripheral_address: "11:22:33:44:55:66".parse().unwrap(),
+            name: Some("Name Different Case".to_string()),
+        });
+
         let interpolator = MqttInterpolator::default();
-        let mqtt_payload = interpolator.interpolate_discovery(fqcn.clone(), &mqtt_conf).unwrap();
+        let request = ConnectPeripheralRequest {
+            peripheral_key: peripheral_key.clone(),
+            fqcn: fqcn.clone(),
+            conf: char_conf.clone(),
+        };
+        let mqtt_payload = interpolator.interpolate_discovery(request).unwrap();
 
         assert_eq!(
             mqtt_payload,
             MqttDiscoveryPayload {
                 config_topic: "config-test-11_22_33_44_55_66".to_string(),
+                retain: true,
+                qos: QoS::AtLeastOnce,
                 discovery_config: Some(json! {{
                     "device": {
                       "identifiers": [
-                        "sample"
+                        "service-name-test-name_test-name_different_case"
                       ],
-                      "name": "11_22_33_44_55_66"
+                      "name": "name"
                     },
                     "device_class": "temperature",
                     "state_topic": "test-11_22_33_44_55_66",

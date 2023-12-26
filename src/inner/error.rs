@@ -1,6 +1,8 @@
 use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::conf::model::service_characteristic_key::ServiceCharacteristicKey;
+use rhai::EvalAltResult;
 use std::sync::Arc;
+use tracing::error;
 use uuid::Uuid;
 
 use crate::inner::conv::converter::ConversionError;
@@ -62,16 +64,19 @@ pub(crate) enum CollectorError {
     AcquireError(#[from] tokio::sync::AcquireError),
 
     #[error("No MQTT config")]
+    NoMqttConfig,
+
+    #[error("No MQTT discovery config")]
     NoMqttDiscoveryConfig,
 
     #[error("Serde JSON error: {0}")]
     SerdeJsonError(#[from] serde_json::Error),
 
-    #[error("Handlebars error: {0}")]
-    RenderError(#[from] handlebars::RenderError),
+    #[error("Scripting error in expression {0}: {1:?}")]
+    EvalError(String, Box<EvalAltResult>),
 
-    #[error("Invalid MQTT config: {0}")]
-    InvalidMqttConfig(String),
+    #[error("Scripting error: {0}")]
+    RhaiError(#[from] Box<EvalAltResult>),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

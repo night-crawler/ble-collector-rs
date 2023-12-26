@@ -12,7 +12,6 @@ use metrics_util::MetricKindMask;
 use rocket::{routes, Build, Rocket};
 use rumqttc::v5::MqttOptions;
 use tokio::task::JoinSet;
-use tracing::error;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
@@ -136,10 +135,11 @@ pub(super) async fn init_mqtt(
     join_set: &mut JoinSet<anyhow::Result<()>>,
 ) -> anyhow::Result<()> {
     let (mqtt_client, mut event_loop) = rumqttc::v5::AsyncClient::new(opts, cap);
-    let interpolator = MqttInterpolator::default();
 
     join_set.spawn(async move {
+        let interpolator = MqttInterpolator::default();
         let mut stream = payload_receiver.stream();
+
         while let Some(collector_event) = stream.next().await {
             match collector_event {
                 CollectorEvent::Payload(payload) => {
@@ -153,19 +153,15 @@ pub(super) async fn init_mqtt(
                         .publish(state_topic, mqtt_conf.qos(), mqtt_conf.retain, data_point)
                         .await?;
                 }
-                CollectorEvent::Connect(fqcn, char_conf) => {
-                    let Some(mqtt_conf) = char_conf.publish_mqtt() else {
-                        continue;
-                    };
-
-                    let payload = match interpolator.interpolate_discovery(fqcn, mqtt_conf) {
+                CollectorEvent::Connect(request) => {
+                    let payload = match interpolator.interpolate_discovery(request) {
                         Ok(payload) => payload,
-                        Err(CollectorError::NoMqttDiscoveryConfig) => continue,
+                        Err(CollectorError::NoMqttDiscoveryConfig) | Err(CollectorError::NoMqttConfig) => continue,
                         err => err?,
                     };
                     let discovery_data = serde_json::to_string(&payload.discovery_config)?;
                     mqtt_client
-                        .publish(payload.config_topic, mqtt_conf.qos(), mqtt_conf.retain, discovery_data)
+                        .publish(payload.config_topic, payload.qos, payload.retain, discovery_data)
                         .await?;
                 }
                 CollectorEvent::Disconnect(_fqcn, _char_conf) => {}
