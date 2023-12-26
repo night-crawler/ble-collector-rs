@@ -104,6 +104,7 @@ impl From<&ConnectPeripheralRequest> for Context {
 }
 
 impl MqttInterpolator {
+    #[tracing::instrument(skip(self), err)]
     pub(crate) fn interpolate_state_topic(
         &self,
         topic: &str,
@@ -114,6 +115,7 @@ impl MqttInterpolator {
         Ok(result)
     }
 
+    #[tracing::instrument(skip(self), err)]
     pub(crate) fn interpolate_discovery(
         &self,
         request: ConnectPeripheralRequest,

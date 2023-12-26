@@ -3,8 +3,10 @@ templates:
   value_template: &value_template '`{{ value_json.value }}`'
   state_topic_precomputed: &state_topic_precomputed '`${state_topic}`'
   state_topic: &state_topic '`sensor_hub/${ctx.fqcn.peripheral}/${ctx.clean_service_name.to_lower()}/${ctx.clean_characteristic_name.to_lower()}`'
-  config_topic: &config_topic '`homeassistant/sensor/sensor_hub_${ctx.clean_fqcn.peripheral}_${ctx.clean_service_name.to_lower()}_${ctx.clean_characteristic_name.to_lower()}/config`'
+  config_topic: &config_topic '`homeassistant/sensor/sensor_hub/${ctx.clean_fqcn.peripheral}_${ctx.clean_service_name.to_lower()}_${ctx.clean_characteristic_name.to_lower()}/config`'
   device: &device
+    manufacturer: '`night-crawler`'
+    model: '`DevProto1`'
     identifiers:
       - '`${ ctx.clean_fqcn.peripheral }`'
     name: >-
@@ -14,24 +16,88 @@ templates:
         "D0:F6:3B:34:4C:1F" => `${ctx.peripheral_name} Bedroom`,
         _ => `${ctx.peripheral_name} ${fqcn.peripheral}`
       }
+    suggested_area: >-
+      switch ctx.fqcn.peripheral {
+        "FA:6F:EC:EE:4B:36" => `Living Room`,
+        "D4:B7:67:56:DC:3B" => `Kitchen`,
+        "D0:F6:3B:34:4C:1F" => `Bedroom`,
+        _ => `Other`
+      }
   _publish_mqtt_timeout: &mqtt_timeout
     state_topic: *state_topic
     discovery:
+      name: '`${ctx.service_name} ${ctx.characteristic_name}`'
       config_topic: *config_topic
       state_topic: *state_topic_precomputed
       value_template: *value_template
       unique_id: *unique_id
+      object_id: *unique_id
       device: *device
+      suggested_display_precision: 2
   _publish_mqtt_temperature: &mqtt_temperature
     state_topic: *state_topic
     discovery:
+      name: '`${ctx.service_name} ${ctx.characteristic_name}`'
       device_class: '`temperature`'
       unit_of_measurement: '`°C`'
       config_topic: *config_topic
       state_topic: *state_topic_precomputed
       value_template: *value_template
       unique_id: *unique_id
+      object_id: *unique_id
       device: *device
+      suggested_display_precision: 2
+  _publish_mqtt_voltage: &mqtt_voltage
+    state_topic: *state_topic
+    discovery:
+      name: '`${ctx.service_name} ${ctx.characteristic_name}`'
+      device_class: '`voltage`'
+      unit_of_measurement: '`V`'
+      config_topic: *config_topic
+      state_topic: *state_topic_precomputed
+      value_template: *value_template
+      unique_id: *unique_id
+      object_id: *unique_id
+      device: *device
+      suggested_display_precision: 2
+  _publish_mqtt_pressure: &mqtt_pressure
+    state_topic: *state_topic
+    discovery:
+      name: '`${ctx.service_name} ${ctx.characteristic_name}`'
+      device_class: '`pressure`'
+      unit_of_measurement: '`Pa`'
+      config_topic: *config_topic
+      state_topic: *state_topic_precomputed
+      value_template: *value_template
+      unique_id: *unique_id
+      object_id: *unique_id
+      device: *device
+      suggested_display_precision: 2
+  _publish_mqtt_humidity: &mqtt_humidity
+    state_topic: *state_topic
+    discovery:
+      name: '`${ctx.service_name} ${ctx.characteristic_name}`'
+      device_class: '`humidity`'
+      unit_of_measurement: '`%`'
+      config_topic: *config_topic
+      state_topic: *state_topic_precomputed
+      value_template: *value_template
+      unique_id: *unique_id
+      object_id: *unique_id
+      device: *device
+      suggested_display_precision: 2
+  _publish_mqtt: &mqtt_acceleration
+    state_topic: *state_topic
+    discovery:
+      name: '`${ctx.service_name} ${ctx.characteristic_name}`'
+      unit_of_measurement: '`m/s^2`'
+      config_topic: *config_topic
+      state_topic: *state_topic_precomputed
+      value_template: *value_template
+      unique_id: *unique_id
+      object_id: *unique_id
+      device: *device
+      suggested_display_precision: 2
 
 peripherals:
   - name: 'Sensor Hub'
@@ -54,16 +120,7 @@ peripherals:
               unit: 'Volt'
               labels:
                 - [ 'scope', 'device' ]
-            publish_mqtt:
-              state_topic: *state_topic
-              discovery:
-                device_class: '`voltage`'
-                unit_of_measurement: '`V`'
-                config_topic: *config_topic
-                state_topic: *state_topic_precomputed
-                value_template: *value_template
-                unique_id: *unique_id
-                device: *device
+            publish_mqtt: *mqtt_voltage
           - !Subscribe
             name: 'Temperature'
             uuid: '00002a6e-0000-1000-8000-00805f9b34fb'
@@ -83,10 +140,12 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                name: '`${ctx.service_name} ${ctx.characteristic_name}`'
                 config_topic: *config_topic
                 state_topic: *state_topic_precomputed
                 value_template: *value_template
                 unique_id: *unique_id
+                object_id: *unique_id
                 device: *device
           - !Poll
             name: 'Timeout'
@@ -128,16 +187,7 @@ peripherals:
               unit: 'Pascal'
               labels:
                 - [ 'scope', 'bme280' ]
-            publish_mqtt:
-              state_topic: *state_topic
-              discovery:
-                device_class: '`pressure`'
-                unit_of_measurement: '`Pa`'
-                config_topic: *config_topic
-                state_topic: *state_topic_precomputed
-                value_template: *value_template
-                unique_id: *unique_id
-                device: *device
+            publish_mqtt: *mqtt_pressure
           - !Subscribe
             name: 'Humidity'
             uuid: '00002a6f-0000-1000-8000-00805f9b34fb'
@@ -149,16 +199,7 @@ peripherals:
               unit: 'Percent'
               labels:
                 - [ 'scope', 'bme280' ]
-            publish_mqtt:
-              state_topic: *state_topic
-              discovery:
-                device_class: '`humidity`'
-                unit_of_measurement: '`%`'
-                config_topic: *config_topic
-                state_topic: *state_topic_precomputed
-                value_template: *value_template
-                unique_id: *unique_id
-                device: *device
+            publish_mqtt: *mqtt_humidity
           - !Poll
             name: 'Timeout'
             uuid: 'a0e4a2ba-0000-8000-0000-00805f9b34fb'
@@ -182,14 +223,7 @@ peripherals:
               unit: 'Percent'
               labels:
                 - [ 'scope', 'bme280' ]
-            publish_mqtt:
-              state_topic: *state_topic
-              discovery:
-                config_topic: *config_topic
-                state_topic: *state_topic_precomputed
-                value_template: *value_template
-                unique_id: *unique_id
-                device: *device
+            publish_mqtt: *mqtt_humidity
           - !Poll
             name: 'Temperature Offset'
             uuid: 'a0e4a2ba-1234-4321-0002-00805f9b34fb'
@@ -201,14 +235,7 @@ peripherals:
               unit: 'Celsius'
               labels:
                 - [ 'scope', 'bme280' ]
-            publish_mqtt:
-              state_topic: *state_topic
-              discovery:
-                config_topic: *config_topic
-                state_topic: *state_topic_precomputed
-                value_template: *value_template
-                unique_id: *unique_id
-                device: *device
+            publish_mqtt: *mqtt_temperature
           - !Poll
             name: 'Pressure Offset'
             uuid: 'a0e4a2ba-1234-4321-0003-00805f9b34fb'
@@ -220,14 +247,7 @@ peripherals:
               unit: 'Pascal'
               labels:
                 - [ 'scope', 'bme280' ]
-            publish_mqtt:
-              state_topic: *state_topic
-              discovery:
-                config_topic: *config_topic
-                state_topic: *state_topic_precomputed
-                value_template: *value_template
-                unique_id: *unique_id
-                device: *device
+            publish_mqtt: *mqtt_pressure
       - uuid: '5c853275-823b-4754-a329-969d4bc8121e'
         name: LIS2DH12
         default_delay: 60s
@@ -244,16 +264,7 @@ peripherals:
               unit: 'm/s^2'
               labels:
                 - [ 'scope', 'lis2dh12' ]
-            publish_mqtt: &mqtt_acceleration
-              state_topic: *state_topic
-              discovery:
-                device_class: '`acceleration`'
-                unit_of_measurement: '`m/s^2`'
-                config_topic: *config_topic
-                state_topic: *state_topic_precomputed
-                value_template: *value_template
-                unique_id: *unique_id
-                device: *device
+            publish_mqtt: *mqtt_acceleration
           - !Subscribe
             name: 'Y-Axis Acceleration'
             uuid: 'eaeaeaea-0000-1000-0000-00805f9b34fb'
@@ -306,16 +317,7 @@ peripherals:
               unit: 'Volt'
               labels:
                 - [ 'scope', 'adc' ]
-            publish_mqtt: &adc_voltage
-              state_topic: *state_topic
-              discovery:
-                device_class: '`voltage`'
-                unit_of_measurement: '`V`'
-                config_topic: *config_topic
-                state_topic: *state_topic_precomputed
-                value_template: *value_template
-                unique_id: *unique_id
-                device: *device
+            publish_mqtt: *mqtt_voltage
           - !Subscribe
             name: 'Voltage 1'
             uuid: '00002b18-0001-1000-8000-00805f9b34fb'
@@ -327,7 +329,7 @@ peripherals:
               unit: 'Volt'
               labels:
                 - [ 'scope', 'adc' ]
-            publish_mqtt: *adc_voltage
+            publish_mqtt: *mqtt_voltage
           - !Subscribe
             name: 'Voltage 2'
             uuid: '00002b18-0002-1000-8000-00805f9b34fb'
@@ -339,7 +341,7 @@ peripherals:
               unit: 'Volt'
               labels:
                 - [ 'scope', 'adc' ]
-            publish_mqtt: *adc_voltage
+            publish_mqtt: *mqtt_voltage
           - !Subscribe
             name: 'Voltage 3'
             uuid: '00002b18-0003-1000-8000-00805f9b34fb'
@@ -351,7 +353,7 @@ peripherals:
               unit: 'Volt'
               labels:
                 - [ 'scope', 'adc' ]
-            publish_mqtt: *adc_voltage
+            publish_mqtt: *mqtt_voltage
           - !Subscribe
             name: 'Voltage 4'
             uuid: '00002b18-0004-1000-8000-00805f9b34fb'
@@ -363,7 +365,7 @@ peripherals:
               unit: 'Volt'
               labels:
                 - [ 'scope', 'adc' ]
-            publish_mqtt: *adc_voltage
+            publish_mqtt: *mqtt_voltage
           - !Subscribe
             name: 'Voltage 5'
             uuid: '00002b18-0005-1000-8000-00805f9b34fb'
@@ -375,7 +377,7 @@ peripherals:
               unit: 'Volt'
               labels:
                 - [ 'scope', 'adc' ]
-            publish_mqtt: *adc_voltage
+            publish_mqtt: *mqtt_voltage
           - !Subscribe
             name: 'Voltage 6'
             uuid: '00002b18-0006-1000-8000-00805f9b34fb'
@@ -387,7 +389,7 @@ peripherals:
               unit: 'Volt'
               labels:
                 - [ 'scope', 'adc' ]
-            publish_mqtt: *adc_voltage
+            publish_mqtt: *mqtt_voltage
           - !Subscribe
             name: 'Number of Samples'
             uuid: 'A0E4D2BA-0000-8000-0000-00805f9b34fb'
@@ -402,10 +404,13 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                name: '`${ctx.service_name} ${ctx.characteristic_name}`'
+                unit_of_measurement: '`sample`'
                 config_topic: *config_topic
                 state_topic: *state_topic_precomputed
                 value_template: *value_template
                 unique_id: *unique_id
+                object_id: *unique_id
                 device: *device
           - !Subscribe
             name: 'Elapsed Time'
@@ -421,10 +426,13 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                name: '`${ctx.service_name} ${ctx.characteristic_name}`'
+                unit_of_measurement: '`us`'
                 config_topic: *config_topic
                 state_topic: *state_topic_precomputed
                 value_template: *value_template
                 unique_id: *unique_id
+                object_id: *unique_id
                 device: *device
           - !Poll
             name: 'Timeout'
@@ -457,12 +465,13 @@ peripherals:
             publish_mqtt: &veml6040_raw
               state_topic: *state_topic
               discovery:
-                device_class: '`color`'
+                name: '`${ctx.service_name} ${ctx.characteristic_name}`'
                 unit_of_measurement: '`raw`'
                 config_topic: *config_topic
                 state_topic: *state_topic_precomputed
                 value_template: *value_template
                 unique_id: *unique_id
+                object_id: *unique_id
                 device: *device
           - !Subscribe
             name: 'Green Color Intensity'
@@ -514,11 +523,15 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                name: '`${ctx.service_name} ${ctx.characteristic_name}`'
+                unit_of_measurement: '`K`'
                 config_topic: *config_topic
                 state_topic: *state_topic_precomputed
                 value_template: *value_template
                 unique_id: *unique_id
+                object_id: *unique_id
                 device: *device
+                suggested_display_precision: 2
           - !Subscribe
             name: 'Luminous Flux'
             uuid: '00002AFF-0000-1000-8000-00805f9b34fb'
@@ -533,12 +546,14 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                name: '`${ctx.service_name} ${ctx.characteristic_name}`'
                 device_class: '`illuminance`'
-                unit_of_measurement: '`lm`'
+                unit_of_measurement: '`lx`'
                 config_topic: *config_topic
                 state_topic: *state_topic_precomputed
                 value_template: *value_template
                 unique_id: *unique_id
+                object_id: *unique_id
                 device: *device
           - !Poll
             name: 'Timeout'
