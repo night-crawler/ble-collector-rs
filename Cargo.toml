@@ -28,10 +28,10 @@ num-traits = "0.2"
 
 dashmap = { version = "5.5", features = ["serde"] }
 
-metrics = { version = "0.21" }
-metrics-exporter-prometheus = { version = "0.12" }
-metrics-tracing-context = "0.14"
-metrics-util = "0.15"
+metrics = { version = "0.22" }
+metrics-exporter-prometheus = { version = "0.13" }
+metrics-tracing-context = "0.15"
+metrics-util = "0.16"
 
 serde = { default-features = false, version = "1", features = ["rc"] }
 serde_yaml = "0.9"

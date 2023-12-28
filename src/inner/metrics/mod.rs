@@ -29,30 +29,31 @@ pub(crate) struct StaticMetric {
 impl StaticMetric {
     fn describe(&self) {
         let unit = self.unit;
-        let recorder = metrics::try_recorder().unwrap();
-        match self.metric_type {
-            MetricType::Counter => recorder.describe_counter(
-                KeyName::from(self.metric_name),
-                Some(unit),
-                SharedString::from(self.description),
-            ),
-            MetricType::Gauge => recorder.describe_gauge(
-                KeyName::from(self.metric_name),
-                Some(unit),
-                SharedString::from(self.description),
-            ),
-            MetricType::Histogram => recorder.describe_histogram(
-                KeyName::from(self.metric_name),
-                Some(unit),
-                SharedString::from(self.description),
-            ),
-        }
+        metrics::with_recorder(|recorder| {
+            match self.metric_type {
+                MetricType::Counter => recorder.describe_counter(
+                    KeyName::from(self.metric_name),
+                    Some(unit),
+                    SharedString::from(self.description),
+                ),
+                MetricType::Gauge => recorder.describe_gauge(
+                    KeyName::from(self.metric_name),
+                    Some(unit),
+                    SharedString::from(self.description),
+                ),
+                MetricType::Histogram => recorder.describe_histogram(
+                    KeyName::from(self.metric_name),
+                    Some(unit),
+                    SharedString::from(self.description),
+                ),
+            };
+        });
     }
 
     pub(crate) fn increment(&self) {
         match self.metric_type {
             MetricType::Counter => {
-                counter!(self.metric_name, 1);
+                counter!(self.metric_name).increment(1);
             }
             _ => panic!("Metric type mismatch"),
         }
@@ -61,7 +62,7 @@ impl StaticMetric {
     pub(crate) fn gauge(&self, value: f64) {
         match self.metric_type {
             MetricType::Gauge => {
-                gauge!(self.metric_name, value);
+                gauge!(self.metric_name).set(value);
             }
             _ => panic!("Metric type mismatch"),
         }
@@ -75,7 +76,7 @@ impl StaticMetric {
             MetricType::Histogram => {
                 let now = std::time::Instant::now();
                 let result = f().await;
-                metrics::histogram!(self.metric_name, now.elapsed().as_millis() as f64);
+                metrics::histogram!(self.metric_name).record(now.elapsed().as_millis() as f64);
                 result
             }
             _ => panic!("Metric type mismatch"),

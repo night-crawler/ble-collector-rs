@@ -35,7 +35,7 @@ impl MultiPublisher {
                 Label::new("characteristic", payload.fqcn.characteristic.to_string()),
             ];
             self.publish(payload);
-            counter!(PAYLOAD_PROCESSED_COUNT.metric_name, 1, metric_labels);
+            counter!(PAYLOAD_PROCESSED_COUNT.metric_name, metric_labels).increment(1);
             if index % 10000 == 0 {
                 debug!("Processed {index} payloads");
             }

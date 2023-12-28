@@ -24,22 +24,23 @@ impl MetricPublisher {
         self.registered_metrics
             .entry(metric_conf.name.clone())
             .or_insert_with(move || {
-                let recorder = metrics::try_recorder().unwrap();
-                let description = metric_conf
-                    .description
-                    .as_ref()
-                    .map(|d| SharedString::from(d.to_string()))
-                    .unwrap_or(SharedString::from(""));
+                metrics::with_recorder(|recorder| {
+                    let description = metric_conf
+                        .description
+                        .as_ref()
+                        .map(|d| SharedString::from(d.to_string()))
+                        .unwrap_or(SharedString::from(""));
 
-                let description = SharedString::from(description);
+                    let description = SharedString::from(description);
 
-                let name = KeyName::from(metric_conf.name.to_string());
+                    let name = KeyName::from(metric_conf.name.to_string());
 
-                match metric_conf.metric_type {
-                    MetricType::Counter => recorder.describe_counter(name, None, description),
-                    MetricType::Gauge => recorder.describe_gauge(name, None, description),
-                    MetricType::Histogram => recorder.describe_histogram(name, None, description),
-                };
+                    match metric_conf.metric_type {
+                        MetricType::Counter => recorder.describe_counter(name, None, description),
+                        MetricType::Gauge => recorder.describe_gauge(name, None, description),
+                        MetricType::Histogram => recorder.describe_histogram(name, None, description),
+                    };
+                });
             });
     }
 }
@@ -71,13 +72,13 @@ impl PublishPayload for MetricPublisher {
 
         match metric_conf.metric_type {
             MetricType::Counter => {
-                counter!(name, payload.value.as_u64().unwrap(), labels);
+                counter!(name,  labels).absolute(payload.value.as_u64().unwrap())
             }
             MetricType::Gauge => {
-                gauge!(name, payload.value.as_f64().unwrap(), labels);
+                gauge!(name, labels).set(payload.value.as_f64().unwrap());
             }
             MetricType::Histogram => {
-                histogram!(name, payload.value.as_f64().unwrap(), labels);
+                histogram!(name, labels).record(payload.value.as_f64().unwrap());
             }
         }
     }
