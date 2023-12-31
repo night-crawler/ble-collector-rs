@@ -6,14 +6,14 @@ use btleplug::api::Peripheral as _;
 use btleplug::platform::Peripheral;
 use futures_util::StreamExt;
 use tokio::time::timeout;
-use tracing::{debug, info, info_span, warn, Span};
+use tracing::{debug, info, info_span, warn, Instrument, Span};
 
 use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::metrics::{
     Measure, CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED, CONNECTION_DURATION,
-    SERVICE_DISCOVERY_DURATION, TOTAL_CONNECTING_DURATION,
+    TOTAL_CONNECTING_DURATION,
 };
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
 use crate::inner::model::collector_event::CollectorEvent;
@@ -113,9 +113,11 @@ impl PeripheralManager {
                     .entry(ctx.fqcn.peripheral)
                     .or_insert_with(|| {
                         tokio::spawn(async move {
+                            span.record("type", "notify");
                             let _ = self_clone
                                 .clone()
-                                .block_on_notifying(ctx, span)
+                                .block_on_notifying(ctx, span.clone())
+                                .instrument(span)
                                 .measure_execution_time(CONNECTION_DURATION.metric_name)
                                 .await;
                             self_clone.abort_subscription(fqcn.clone()).await;
@@ -129,9 +131,11 @@ impl PeripheralManager {
                     .entry(fqcn.clone())
                     .or_insert_with(|| {
                         tokio::spawn(async move {
+                            span.record("type", "poll");
                             let _ = self_clone
                                 .clone()
-                                .block_on_polling(ctx, span)
+                                .block_on_polling(ctx, span.clone())
+                                .instrument(span)
                                 .measure_execution_time(CONNECTION_DURATION)
                                 .await;
                             self_clone.abort_polling(fqcn.clone()).await;
