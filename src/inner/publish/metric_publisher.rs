@@ -71,9 +71,7 @@ impl PublishPayload for MetricPublisher {
         let name = metric_conf.name.to_string();
 
         match metric_conf.metric_type {
-            MetricType::Counter => {
-                counter!(name,  labels).absolute(payload.value.as_u64().unwrap())
-            }
+            MetricType::Counter => counter!(name, labels).absolute(payload.value.as_u64().unwrap()),
             MetricType::Gauge => {
                 gauge!(name, labels).set(payload.value.as_f64().unwrap());
             }

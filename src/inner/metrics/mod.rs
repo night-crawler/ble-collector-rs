@@ -1,6 +1,12 @@
-use metrics::{counter, gauge, KeyName, SharedString, Unit};
+use metrics::{counter, gauge, histogram, KeyName, SharedString, Unit};
+use pin_project_lite::pin_project;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use std::future::Future;
+use std::mem::ManuallyDrop;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) enum MetricType {
@@ -70,13 +76,13 @@ impl StaticMetric {
 
     pub(crate) async fn measure<Fut, R>(&self, f: impl FnOnce() -> Fut) -> R
     where
-        Fut: std::future::Future<Output = R>,
+        Fut: Future<Output = R>,
     {
         match self.metric_type {
             MetricType::Histogram => {
-                let now = std::time::Instant::now();
+                let now = Instant::now();
                 let result = f().await;
-                metrics::histogram!(self.metric_name).record(now.elapsed().as_millis() as f64);
+                histogram!(self.metric_name).record(now.elapsed().as_millis() as f64);
                 result
             }
             _ => panic!("Metric type mismatch"),
@@ -175,53 +181,49 @@ pub(crate) fn describe_metrics() {
     EVENT_COUNT.describe();
 }
 
-// pub(crate) trait Measure : Sized {
-//     fn qwe(self, metric: &'static str) -> TimeInstrumented<Self> {
-//         TimeInstrumented {
-//             inner: ManuallyDrop::new(self),
-//             metric,
-//         }
-//
-//     }
-// }
-//
-// pin_project! {
-//
-//
-//     #[derive(Debug, Clone)]
-//     #[must_use = "futures do nothing unless you `.await` or poll them"]
-//     pub struct TimeInstrumented<T> {
-//         // `ManuallyDrop` is used here to to enter instrument `Drop` by entering
-//         // `Span` and executing `ManuallyDrop::drop`.
-//         #[pin]
-//         inner: ManuallyDrop<T>,
-//         metric: &'static str,
-//     }
-//
-//     impl<T> PinnedDrop for TimeInstrumented<T> {
-//         fn drop(this: Pin<&mut Self>) {
-//             let this = this.project();
-//             // let _enter = this.span.enter();
-//             // SAFETY: 1. `Pin::get_unchecked_mut()` is safe, because this isn't
-//             //             different from wrapping `T` in `Option` and calling
-//             //             `Pin::set(&mut this.inner, None)`, except avoiding
-//             //             additional memory overhead.
-//             //         2. `ManuallyDrop::drop()` is safe, because
-//             //            `PinnedDrop::drop()` is guaranteed to be called only
-//             //            once.
-//             unsafe { ManuallyDrop::drop(this.inner.get_unchecked_mut()) }
-//         }
-//     }
-//
-// }
-//
-//
-// impl<T: Future> Future for TimeInstrumented<T> {
-//     type Output = T::Output;
-//
-//     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-//         let (span, inner) = self.project().span_and_inner_pin_mut();
-//         let _enter = span.enter();
-//         inner.poll(cx)
-//     }
-// }
+pub(crate) trait Measure: Sized {
+    fn measure_execution_time(self, metric: &'static str) -> TimeInstrumented<Self> {
+        TimeInstrumented {
+            inner: ManuallyDrop::new(self),
+            started_at: None,
+            metric,
+        }
+    }
+}
+
+impl<T: Sized> Measure for T {}
+
+pin_project! {
+    #[derive(Debug, Clone)]
+    #[must_use = "futures do nothing unless you `.await` or poll them"]
+    pub struct TimeInstrumented<T> {
+        #[pin]
+        inner: ManuallyDrop<T>,
+        started_at: Option<Instant>,
+        metric: &'static str,
+    }
+
+    impl<T> PinnedDrop for TimeInstrumented<T> {
+        fn drop(this: Pin<&mut Self>) {
+            let this = this.project();
+            let started_at = this.started_at.get_or_insert_with(Instant::now);
+            histogram!(*this.metric).record(started_at.elapsed().as_millis() as f64);
+            unsafe { ManuallyDrop::drop(this.inner.get_unchecked_mut()) }
+        }
+    }
+}
+
+impl<T: Future> Future for TimeInstrumented<T> {
+    type Output = T::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+
+        let inner = unsafe { this.inner.map_unchecked_mut(|v| &mut **v) };
+        let started_at = this.started_at.get_or_insert_with(Instant::now);
+        let res = inner.poll(cx);
+
+        histogram!(*this.metric).record(started_at.elapsed().as_millis() as f64);
+        res
+    }
+}

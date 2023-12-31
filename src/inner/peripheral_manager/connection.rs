@@ -12,7 +12,7 @@ use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
 use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::metrics::{
-    CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED, CONNECTION_DURATION,
+    Measure, CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED, CONNECTION_DURATION,
     SERVICE_DISCOVERY_DURATION, TOTAL_CONNECTING_DURATION,
 };
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
@@ -110,8 +110,10 @@ impl PeripheralManager {
                     .entry(ctx.fqcn.peripheral)
                     .or_insert_with(|| {
                         tokio::spawn(async move {
-                            let _ = CONNECTION_DURATION
-                                .measure(|| self_clone.clone().block_on_notifying(ctx, span))
+                            let _ = self_clone
+                                .clone()
+                                .block_on_notifying(ctx, span)
+                                .measure_execution_time(CONNECTION_DURATION.metric_name)
                                 .await;
                             self_clone.abort_subscription(fqcn.clone()).await;
                         })
