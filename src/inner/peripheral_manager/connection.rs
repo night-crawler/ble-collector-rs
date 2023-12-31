@@ -76,7 +76,10 @@ impl PeripheralManager {
                 peripheral_config: Arc::clone(&peripheral_config),
             };
 
-            TOTAL_CONNECTING_DURATION.measure(|| self.clone().spawn(ctx)).await?;
+            self.clone()
+                .spawn(ctx)
+                .measure_execution_time(TOTAL_CONNECTING_DURATION)
+                .await?;
         }
 
         let num_connected = self.get_all_connected_peripherals().await.get_all().len() as f64;
@@ -126,8 +129,10 @@ impl PeripheralManager {
                     .entry(fqcn.clone())
                     .or_insert_with(|| {
                         tokio::spawn(async move {
-                            let _ = CONNECTION_DURATION
-                                .measure(|| self_clone.clone().block_on_polling(ctx, span))
+                            let _ = self_clone
+                                .clone()
+                                .block_on_polling(ctx, span)
+                                .measure_execution_time(CONNECTION_DURATION)
                                 .await;
                             self_clone.abort_polling(fqcn.clone()).await;
                         })
@@ -166,16 +171,14 @@ impl PeripheralManager {
         }
 
         info!("Connecting to peripheral");
-        CONNECTING_DURATION
-            .measure(|| timeout(self.app_conf.peripheral_connect_timeout, peripheral.connect()))
+        timeout(self.app_conf.peripheral_connect_timeout, peripheral.connect())
+            .measure_execution_time(CONNECTING_DURATION)
             .await??;
         info!("Connected to peripheral");
 
         if peripheral.services().is_empty() {
             info!("Forcing service discovery for peripheral");
-            SERVICE_DISCOVERY_DURATION
-                .measure(|| peripheral.discover_services())
-                .await?;
+            self.discover_services(peripheral).await?;
             info!("Forced service discovery for peripheral completed");
         }
 

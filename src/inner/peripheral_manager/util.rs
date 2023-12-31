@@ -7,7 +7,7 @@ use futures_util::{stream, StreamExt};
 use tracing::info;
 
 use crate::inner::error::{CollectorError, CollectorResult};
-use crate::inner::metrics::SERVICE_DISCOVERY_DURATION;
+use crate::inner::metrics::{Measure, SERVICE_DISCOVERY_DURATION};
 use crate::inner::model::connected_peripherals::ConnectedPeripherals;
 use crate::inner::model::fqcn::Fqcn;
 use crate::inner::model::peripheral_key::PeripheralKey;
@@ -64,10 +64,11 @@ impl PeripheralManager {
         Ok(())
     }
 
-    #[tracing::instrument(level = "info", skip(self), err)]
-    async fn discover_services(&self, peripheral: &Peripheral) -> CollectorResult<()> {
-        SERVICE_DISCOVERY_DURATION
-            .measure(|| peripheral.discover_services())
+    #[tracing::instrument(level = "info", skip_all, err)]
+    pub(super) async fn discover_services(&self, peripheral: &Peripheral) -> CollectorResult<()> {
+        peripheral
+            .discover_services()
+            .measure_execution_time(SERVICE_DISCOVERY_DURATION)
             .await?;
         Ok(())
     }

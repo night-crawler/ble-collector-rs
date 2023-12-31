@@ -73,21 +73,6 @@ impl StaticMetric {
             _ => panic!("Metric type mismatch"),
         }
     }
-
-    pub(crate) async fn measure<Fut, R>(&self, f: impl FnOnce() -> Fut) -> R
-    where
-        Fut: Future<Output = R>,
-    {
-        match self.metric_type {
-            MetricType::Histogram => {
-                let now = Instant::now();
-                let result = f().await;
-                histogram!(self.metric_name).record(now.elapsed().as_millis() as f64);
-                result
-            }
-            _ => panic!("Metric type mismatch"),
-        }
-    }
 }
 
 pub(crate) const PAYLOAD_PROCESSED_COUNT: StaticMetric = StaticMetric {
@@ -167,6 +152,12 @@ pub(crate) const SERVICE_DISCOVERY_DURATION: StaticMetric = StaticMetric {
     metric_type: MetricType::Histogram,
 };
 
+impl From<StaticMetric> for KeyName {
+    fn from(value: StaticMetric) -> Self {
+        KeyName::from(value.metric_name)
+    }
+}
+
 pub(crate) fn describe_metrics() {
     PAYLOAD_PROCESSED_COUNT.describe();
     EVENT_THROTTLED_COUNT.describe();
@@ -182,11 +173,15 @@ pub(crate) fn describe_metrics() {
 }
 
 pub(crate) trait Measure: Sized {
-    fn measure_execution_time(self, metric: &'static str) -> TimeInstrumented<Self> {
+    fn measure_execution_time<M>(self, metric: M) -> TimeInstrumented<Self>
+    where
+        M: Into<KeyName>,
+    {
+        let key_name = metric.into();
         TimeInstrumented {
             inner: ManuallyDrop::new(self),
             started_at: None,
-            metric,
+            metric: key_name,
         }
     }
 }
@@ -200,14 +195,14 @@ pin_project! {
         #[pin]
         inner: ManuallyDrop<T>,
         started_at: Option<Instant>,
-        metric: &'static str,
+        metric: KeyName,
     }
 
-    impl<T> PinnedDrop for TimeInstrumented<T> {
+    impl<T> PinnedDrop for TimeInstrumented<T>  {
         fn drop(this: Pin<&mut Self>) {
             let this = this.project();
             let started_at = this.started_at.get_or_insert_with(Instant::now);
-            histogram!(*this.metric).record(started_at.elapsed().as_millis() as f64);
+            histogram!(this.metric.clone()).record(started_at.elapsed().as_millis() as f64);
             unsafe { ManuallyDrop::drop(this.inner.get_unchecked_mut()) }
         }
     }
@@ -223,7 +218,7 @@ impl<T: Future> Future for TimeInstrumented<T> {
         let started_at = this.started_at.get_or_insert_with(Instant::now);
         let res = inner.poll(cx);
 
-        histogram!(*this.metric).record(started_at.elapsed().as_millis() as f64);
+        histogram!(this.metric.clone()).record(started_at.elapsed().as_millis() as f64);
         res
     }
 }
