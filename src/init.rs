@@ -69,7 +69,7 @@ pub(super) fn init_prometheus(idle_timeout: Duration) -> anyhow::Result<Promethe
             "characteristic",
             "scope",
             "service",
-            "type",
+            "spawn_type",
         ]))
         .install()?;
 
