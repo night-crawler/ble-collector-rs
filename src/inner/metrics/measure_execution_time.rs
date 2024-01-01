@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use metrics::{histogram, KeyName};
+use metrics::{gauge, KeyName};
 use pin_project_lite::pin_project;
 use tracing::Span;
 
@@ -41,7 +41,7 @@ pin_project! {
             let this = this.project();
             let _enter = this.span.enter();
             let started_at = this.started_at.get_or_insert_with(Instant::now);
-            histogram!(this.key_name.clone()).record(started_at.elapsed().as_millis() as f64);
+            gauge!(this.key_name.clone()).set(started_at.elapsed().as_millis() as f64);
             unsafe { ManuallyDrop::drop(this.inner.get_unchecked_mut()) }
         }
     }
@@ -58,7 +58,7 @@ impl<T: Future> Future for TimeInstrumented<T> {
         let started_at = this.started_at.get_or_insert_with(Instant::now);
         let res = inner.poll(cx);
 
-        histogram!(this.key_name.clone()).record(started_at.elapsed().as_millis() as f64);
+        gauge!(this.key_name.clone()).set(started_at.elapsed().as_millis() as f64);
         res
     }
 }

@@ -113,8 +113,7 @@ impl PeripheralManager {
                     .await
                     .entry(ctx.fqcn.peripheral)
                     .or_insert_with(|| {
-                        let span =
-                            info_span!(parent: parent_span.clone(), "block_on_notifying", spawn_type = "notify");
+                        let span = info_span!(parent: self.span.clone(), "block_on_notifying", spawn_type = "notify", peripheral = % ctx.fqcn.peripheral);
                         tokio::spawn(async move {
                             let _ = self_clone
                                 .clone()
@@ -132,8 +131,7 @@ impl PeripheralManager {
                     .entry(fqcn.clone())
                     .or_insert_with(|| {
                         tokio::spawn(async move {
-                            let span =
-                                info_span!(parent: parent_span.clone(), "block_on_polling", spawn_type = "poll");
+                            let span = info_span!(parent: parent_span.clone(), "block_on_polling", spawn_type = "poll");
                             let _ = self_clone
                                 .clone()
                                 .block_on_polling(ctx, parent_span)
