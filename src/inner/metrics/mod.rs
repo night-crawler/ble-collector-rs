@@ -1,12 +1,9 @@
-use metrics::{counter, gauge, histogram, KeyName, SharedString, Unit};
-use pin_project_lite::pin_project;
-use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::future::Future;
-use std::mem::ManuallyDrop;
-use std::pin::Pin;
-use std::task::{Context, Poll};
-use std::time::Instant;
+
+use metrics::{counter, gauge, KeyName, SharedString, Unit};
+use serde::{Deserialize, Serialize};
+
+pub(crate) mod measure_execution_time;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) enum MetricType {
@@ -152,12 +149,6 @@ pub(crate) const SERVICE_DISCOVERY_DURATION: StaticMetric = StaticMetric {
     metric_type: MetricType::Histogram,
 };
 
-impl From<StaticMetric> for KeyName {
-    fn from(value: StaticMetric) -> Self {
-        KeyName::from(value.metric_name)
-    }
-}
-
 pub(crate) fn describe_metrics() {
     PAYLOAD_PROCESSED_COUNT.describe();
     EVENT_THROTTLED_COUNT.describe();
@@ -172,53 +163,8 @@ pub(crate) fn describe_metrics() {
     EVENT_COUNT.describe();
 }
 
-pub(crate) trait Measure: Sized {
-    fn measure_execution_time<M>(self, metric: M) -> TimeInstrumented<Self>
-    where
-        M: Into<KeyName>,
-    {
-        let key_name = metric.into();
-        TimeInstrumented {
-            inner: ManuallyDrop::new(self),
-            started_at: None,
-            metric: key_name,
-        }
-    }
-}
-
-impl<T: Sized> Measure for T {}
-
-pin_project! {
-    #[derive(Debug, Clone)]
-    #[must_use = "futures do nothing unless you `.await` or poll them"]
-    pub struct TimeInstrumented<T> {
-        #[pin]
-        inner: ManuallyDrop<T>,
-        started_at: Option<Instant>,
-        metric: KeyName,
-    }
-
-    impl<T> PinnedDrop for TimeInstrumented<T>  {
-        fn drop(this: Pin<&mut Self>) {
-            let this = this.project();
-            let started_at = this.started_at.get_or_insert_with(Instant::now);
-            histogram!(this.metric.clone()).record(started_at.elapsed().as_millis() as f64);
-            unsafe { ManuallyDrop::drop(this.inner.get_unchecked_mut()) }
-        }
-    }
-}
-
-impl<T: Future> Future for TimeInstrumented<T> {
-    type Output = T::Output;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.project();
-
-        let inner = unsafe { this.inner.map_unchecked_mut(|v| &mut **v) };
-        let started_at = this.started_at.get_or_insert_with(Instant::now);
-        let res = inner.poll(cx);
-
-        histogram!(this.metric.clone()).record(started_at.elapsed().as_millis() as f64);
-        res
+impl From<StaticMetric> for KeyName {
+    fn from(value: StaticMetric) -> Self {
+        KeyName::from(value.metric_name)
     }
 }

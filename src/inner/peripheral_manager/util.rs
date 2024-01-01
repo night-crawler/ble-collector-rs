@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use btleplug::api::{BDAddr, Central, Peripheral as _};
 use btleplug::platform::{Peripheral, PeripheralId};
 use futures_util::{stream, StreamExt};
-use tracing::info;
+use tracing::{info, Span};
 
+use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::error::{CollectorError, CollectorResult};
-use crate::inner::metrics::{Measure, SERVICE_DISCOVERY_DURATION};
+use crate::inner::metrics::measure_execution_time::Measure;
+use crate::inner::metrics::SERVICE_DISCOVERY_DURATION;
 use crate::inner::model::connected_peripherals::ConnectedPeripherals;
 use crate::inner::model::fqcn::Fqcn;
 use crate::inner::model::peripheral_key::PeripheralKey;
@@ -68,7 +69,7 @@ impl PeripheralManager {
     pub(super) async fn discover_services(&self, peripheral: &Peripheral) -> CollectorResult<()> {
         peripheral
             .discover_services()
-            .measure_execution_time(SERVICE_DISCOVERY_DURATION)
+            .measure_execution_time(SERVICE_DISCOVERY_DURATION, Span::current())
             .await?;
         Ok(())
     }

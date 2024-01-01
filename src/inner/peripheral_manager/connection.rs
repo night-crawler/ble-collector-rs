@@ -6,13 +6,14 @@ use btleplug::api::Peripheral as _;
 use btleplug::platform::Peripheral;
 use futures_util::StreamExt;
 use tokio::time::timeout;
-use tracing::{debug, info, info_span, warn, Instrument, Span};
+use tracing::{debug, info, info_span, warn, Span};
 
 use crate::inner::conf::model::characteristic_config::CharacteristicConfig;
 use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
 use crate::inner::error::{CollectorError, CollectorResult};
+use crate::inner::metrics::measure_execution_time::Measure;
 use crate::inner::metrics::{
-    Measure, CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED, CONNECTION_DURATION,
+    CONNECTED_PERIPHERALS, CONNECTING_DURATION, CONNECTIONS_DROPPED, CONNECTIONS_HANDLED, CONNECTION_DURATION,
     TOTAL_CONNECTING_DURATION,
 };
 use crate::inner::model::characteristic_payload::CharacteristicPayload;
@@ -78,7 +79,7 @@ impl PeripheralManager {
 
             self.clone()
                 .spawn(ctx)
-                .measure_execution_time(TOTAL_CONNECTING_DURATION)
+                .measure_execution_time(TOTAL_CONNECTING_DURATION, Span::current())
                 .await?;
         }
 
@@ -100,7 +101,7 @@ impl PeripheralManager {
         let fqcn = ctx.fqcn.clone();
         let self_clone = Arc::clone(&self);
 
-        let span = Span::current();
+        let parent_span = Span::current();
 
         match ctx.characteristic_config.as_ref() {
             CharacteristicConfig::Subscribe { .. } => {
@@ -113,12 +114,10 @@ impl PeripheralManager {
                     .entry(ctx.fqcn.peripheral)
                     .or_insert_with(|| {
                         tokio::spawn(async move {
-                            span.record("type", "notify");
                             let _ = self_clone
                                 .clone()
-                                .block_on_notifying(ctx, span.clone())
-                                .instrument(span)
-                                .measure_execution_time(CONNECTION_DURATION.metric_name)
+                                .block_on_notifying(ctx, parent_span.clone())
+                                .measure_execution_time(CONNECTION_DURATION, parent_span)
                                 .await;
                             self_clone.abort_subscription(fqcn.clone()).await;
                         })
@@ -131,12 +130,10 @@ impl PeripheralManager {
                     .entry(fqcn.clone())
                     .or_insert_with(|| {
                         tokio::spawn(async move {
-                            span.record("type", "poll");
                             let _ = self_clone
                                 .clone()
-                                .block_on_polling(ctx, span.clone())
-                                .instrument(span)
-                                .measure_execution_time(CONNECTION_DURATION)
+                                .block_on_polling(ctx, parent_span.clone())
+                                .measure_execution_time(CONNECTION_DURATION, parent_span)
                                 .await;
                             self_clone.abort_polling(fqcn.clone()).await;
                         })
@@ -176,7 +173,7 @@ impl PeripheralManager {
 
         info!("Connecting to peripheral");
         timeout(self.app_conf.peripheral_connect_timeout, peripheral.connect())
-            .measure_execution_time(CONNECTING_DURATION)
+            .measure_execution_time(CONNECTING_DURATION, Span::current())
             .await??;
         info!("Connected to peripheral");
 
@@ -247,7 +244,6 @@ impl PeripheralManager {
         }
     }
 
-    #[tracing::instrument(level = "info", skip_all, parent = & _parent_span, err)]
     async fn block_on_notifying(self: Arc<Self>, ctx: ConnectionContext, _parent_span: Span) -> CollectorResult<()> {
         info!("Subscribing to notifications");
         let mut notification_stream = ctx.peripheral.notifications().await?;
