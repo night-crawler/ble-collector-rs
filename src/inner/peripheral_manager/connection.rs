@@ -113,11 +113,13 @@ impl PeripheralManager {
                     .await
                     .entry(ctx.fqcn.peripheral)
                     .or_insert_with(|| {
+                        let span =
+                            info_span!(parent: parent_span.clone(), "block_on_notifying", spawn_type = "notify");
                         tokio::spawn(async move {
                             let _ = self_clone
                                 .clone()
-                                .block_on_notifying(ctx, parent_span.clone())
-                                .measure_execution_time(CONNECTION_DURATION, parent_span)
+                                .block_on_notifying(ctx, parent_span)
+                                .measure_execution_time(CONNECTION_DURATION, span)
                                 .await;
                             self_clone.abort_subscription(fqcn.clone()).await;
                         })
@@ -130,10 +132,12 @@ impl PeripheralManager {
                     .entry(fqcn.clone())
                     .or_insert_with(|| {
                         tokio::spawn(async move {
+                            let span =
+                                info_span!(parent: parent_span.clone(), "block_on_polling", spawn_type = "poll");
                             let _ = self_clone
                                 .clone()
-                                .block_on_polling(ctx, parent_span.clone())
-                                .measure_execution_time(CONNECTION_DURATION, parent_span)
+                                .block_on_polling(ctx, parent_span)
+                                .measure_execution_time(CONNECTION_DURATION, span)
                                 .await;
                             self_clone.abort_polling(fqcn.clone()).await;
                         })
