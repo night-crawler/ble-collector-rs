@@ -286,7 +286,7 @@ impl PeripheralManager {
             let mut subscription_map = self.subscription_map.lock().await;
             let mut subscribed_characteristics = self.subscribed_characteristics.lock().await;
 
-            self.peripheral_cache.remove(&peripheral_key.peripheral_address).await;
+            // self.peripheral_cache.remove(&peripheral_key.peripheral_address).await;
 
             subscribed_characteristics.retain(|fqcn, _| fqcn.peripheral != peripheral_key.peripheral_address);
 
