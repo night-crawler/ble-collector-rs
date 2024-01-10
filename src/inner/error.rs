@@ -77,6 +77,9 @@ pub(crate) enum CollectorError {
 
     #[error("Scripting error: {0}")]
     RhaiError(#[from] Box<EvalAltResult>),
+
+    #[error("{0}")]
+    ApiError(String),
 }
 
 pub(crate) type CollectorResult<T> = Result<T, CollectorError>;

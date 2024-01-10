@@ -8,7 +8,7 @@ use btleplug::platform::{Adapter, Peripheral};
 use retainer::Cache;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tracing::Span;
+use tracing::{info, Span};
 
 use crate::inner::conf::cmd_args::AppConf;
 use crate::inner::conf::manager::ConfigurationManager;
@@ -117,6 +117,8 @@ impl PeripheralManager {
         if poll_handle_map.keys().any(|fqcn| fqcn.peripheral == peripheral_address) {
             return Ok(());
         }
+
+        info!("Disconnecting from {}", peripheral_address);
 
         peripheral.disconnect().await?;
 

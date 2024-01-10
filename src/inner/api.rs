@@ -8,8 +8,8 @@ use crate::inner::adapter_manager::AdapterManager;
 use crate::inner::batch_executor::execute_batches;
 use crate::inner::conf::manager::ConfigurationManager;
 use crate::inner::conf::model::flat_peripheral_config::FlatPeripheralConfig;
-use crate::inner::dto::{AdapterDto, Envelope, PeripheralIoRequestDto, PeripheralIoResponseDto};
-use crate::inner::error::CollectorError;
+use crate::inner::dto::{AdapterDto, Envelope, PeripheralIoRequestDto, PeripheralIoResponseDto, ResultDto};
+use crate::inner::error::{CollectorError, CollectorResult};
 use crate::inner::http_error::{ApiResult, HttpError};
 use crate::inner::model::adapter_info::AdapterInfo;
 use crate::inner::model::connected_peripherals::ConnectedPeripherals;
@@ -57,6 +57,18 @@ pub(crate) async fn read_write_characteristic(
         );
     };
     let response = execute_batches(peripheral_manager, request.into_inner()).await;
+    let has_errors = response
+        .batch_responses
+        .iter()
+        .flat_map(|batch_response| batch_response.command_responses.iter())
+        .flatten()
+        .any(|cmd_result| matches!(cmd_result, ResultDto::Error { .. }));
+
+    if has_errors {
+        let body: CollectorResult<String> = serde_json::to_string(&response).map_err(|err| err.into());
+        return Err(HttpError::new(CollectorError::ApiError(body?)).with_status(Status::BadRequest));
+    }
+
     Ok(Envelope::from(response).into())
 }
 
