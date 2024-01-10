@@ -26,6 +26,7 @@ templates:
   _publish_mqtt_timeout: &mqtt_timeout
     state_topic: *state_topic
     discovery:
+      retain: true
       name: '`${ctx.service_name} ${ctx.characteristic_name}`'
       config_topic: *config_topic
       state_topic: *state_topic_precomputed
@@ -37,6 +38,7 @@ templates:
   _publish_mqtt_temperature: &mqtt_temperature
     state_topic: *state_topic
     discovery:
+      retain: true
       name: '`${ctx.service_name} ${ctx.characteristic_name}`'
       device_class: '`temperature`'
       unit_of_measurement: '`°C`'
@@ -50,6 +52,7 @@ templates:
   _publish_mqtt_voltage: &mqtt_voltage
     state_topic: *state_topic
     discovery:
+      retain: true
       name: '`${ctx.service_name} ${ctx.characteristic_name}`'
       device_class: '`voltage`'
       unit_of_measurement: '`V`'
@@ -63,6 +66,7 @@ templates:
   _publish_mqtt_pressure: &mqtt_pressure
     state_topic: *state_topic
     discovery:
+      retain: true
       name: '`${ctx.service_name} ${ctx.characteristic_name}`'
       device_class: '`pressure`'
       unit_of_measurement: '`Pa`'
@@ -76,6 +80,7 @@ templates:
   _publish_mqtt_humidity: &mqtt_humidity
     state_topic: *state_topic
     discovery:
+      retain: true
       name: '`${ctx.service_name} ${ctx.characteristic_name}`'
       device_class: '`humidity`'
       unit_of_measurement: '`%`'
@@ -89,6 +94,7 @@ templates:
   _publish_mqtt: &mqtt_acceleration
     state_topic: *state_topic
     discovery:
+      retain: true
       name: '`${ctx.service_name} ${ctx.characteristic_name}`'
       unit_of_measurement: '`m/s^2`'
       config_topic: *config_topic
@@ -404,6 +410,7 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                retain: true
                 name: '`${ctx.service_name} ${ctx.characteristic_name}`'
                 unit_of_measurement: '`sample`'
                 config_topic: *config_topic
@@ -426,6 +433,7 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                retain: true
                 name: '`${ctx.service_name} ${ctx.characteristic_name}`'
                 unit_of_measurement: '`us`'
                 config_topic: *config_topic
@@ -465,6 +473,7 @@ peripherals:
             publish_mqtt: &veml6040_raw
               state_topic: *state_topic
               discovery:
+                retain: true
                 name: '`${ctx.service_name} ${ctx.characteristic_name}`'
                 unit_of_measurement: '`raw`'
                 config_topic: *config_topic
@@ -523,6 +532,7 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                retain: true
                 name: '`${ctx.service_name} ${ctx.characteristic_name}`'
                 unit_of_measurement: '`K`'
                 config_topic: *config_topic
@@ -546,6 +556,7 @@ peripherals:
             publish_mqtt:
               state_topic: *state_topic
               discovery:
+                retain: true
                 name: '`${ctx.service_name} ${ctx.characteristic_name}`'
                 device_class: '`illuminance`'
                 unit_of_measurement: '`lx`'
