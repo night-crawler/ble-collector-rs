@@ -94,7 +94,9 @@ impl PeripheralManager {
                         .await
                         .is_err()
                     {
-                        CONNECTING_ERRORS.increment();
+                        span.in_scope(|| {
+                            CONNECTING_ERRORS.increment();
+                        });
                     }
                 });
             }
