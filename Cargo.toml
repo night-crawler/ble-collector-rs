@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 pin-project-lite = "0.2"
-btleplug = { git = "https://github.com/night-crawler/btleplug", branch = "add-service-uuid-value-notification", version = "0.11.4", features = ["serde"] }
+btleplug = { git = "https://github.com/night-crawler/btleplug", branch = "add-service-uuid-value-notification", version = "0.11.5", features = ["serde"] }
 tokio = { version = "1.34", features = ["full"] }
 uuid = { version = "1.5", features = ["serde"] }
 rand = "0.8"
@@ -16,8 +16,8 @@ anyhow = { version = "1", features = ["default", "backtrace"] }
 clap = { version = "4", features = ["derive", "color", "suggestions"] }
 rocket = { version = "0.5", features = ["json"] }
 lazy_static = "1.4"
-strum = "0.25"
-strum_macros = "0.25"
+strum = "0.26"
+strum_macros = "0.26"
 regex = { version = "1.10.2", features = ["default"] }
 retainer = "0.3"
 humantime = "2.1"
@@ -29,7 +29,7 @@ num-traits = "0.2"
 dashmap = { version = "5.5", features = ["serde"] }
 
 metrics = { version = "0.22" }
-metrics-exporter-prometheus = { version = "0.13" }
+metrics-exporter-prometheus = { version = "0.14" }
 metrics-tracing-context = "0.15"
 metrics-util = "0.16"
 
@@ -45,8 +45,8 @@ tracing-subscriber = { version = "0.3", features = ["fmt", "json"] }
 console-subscriber = "0.2"
 atty = { version = "0.2", features = [] }
 
-rumqttc = "0.23"
-rhai = { version = "1.16", features = ["sync", "serde"] }
+rumqttc = "0.24"
+rhai = { version = "1.18", features = ["sync", "serde"] }
 
 [dev-dependencies]
 float-cmp = "0.9.0"

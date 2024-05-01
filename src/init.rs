@@ -12,6 +12,7 @@ use metrics_util::MetricKindMask;
 use rocket::{routes, Build, Rocket};
 use rumqttc::v5::MqttOptions;
 use tokio::task::JoinSet;
+use tracing::error;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
@@ -174,7 +175,9 @@ pub(super) async fn init_mqtt(
 
     join_set.spawn(async move {
         loop {
-            let _event = event_loop.poll().await?;
+            if let Err(err) = event_loop.poll().await {
+                error!("Failed to poll MQTT event loop: {}", err);
+            }
         }
     });
 
